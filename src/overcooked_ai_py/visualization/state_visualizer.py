@@ -13,6 +13,7 @@ from overcooked_ai_py.mdp.layout_generator import (
     POT,
     SERVING_LOC,
     TOMATO_DISPENSER,
+    CUTTING_BOARD,
 )
 from overcooked_ai_py.static import FONTS_DIR, GRAPHICS_DIR
 from overcooked_ai_py.utils import (
@@ -33,7 +34,7 @@ from overcooked_ai_py.visualization.visualization_utils import (
 
 roboto_path = os.path.join(FONTS_DIR, "Roboto-Regular.ttf")
 
-
+#cutting board stays stationary
 class StateVisualizer:
     TERRAINS_IMG = MultiFramePygameImage(
         os.path.join(GRAPHICS_DIR, "terrain.png"),
@@ -51,6 +52,11 @@ class StateVisualizer:
         os.path.join(GRAPHICS_DIR, "chefs.png"),
         os.path.join(GRAPHICS_DIR, "chefs.json"),
     )
+    CUTTING_BOARD_IMG = MultiFramePygameImage(
+        os.path.join(GRAPHICS_DIR, "cuttingboard.png"),
+        os.path.join(GRAPHICS_DIR, "cuttingboard.json"),
+    )
+   
     ARROW_IMG = pygame.image.load(os.path.join(GRAPHICS_DIR, "arrow.png"))
     INTERACT_IMG = pygame.image.load(os.path.join(GRAPHICS_DIR, "interact.png"))
     STAY_IMG = pygame.image.load(os.path.join(GRAPHICS_DIR, "stay.png"))
@@ -97,6 +103,7 @@ class StateVisualizer:
         POT: "pot",
         DISH_DISPENSER: "dishes",
         SERVING_LOC: "serve",
+        CUTTING_BOARD: "cutting_board",
     }
 
     def __init__(self, **kwargs):
@@ -241,6 +248,7 @@ class StateVisualizer:
         assert window_display or img_path or ipython_display, (
             "specify at least one of the ways to output result state image: window_display, img_path, or ipython_display"
         )
+        print("state: ", state)
         surface = self.render_state(state, grid, hud_data, action_probs=action_probs)
 
         if img_path is None and ipython_display:
@@ -348,7 +356,13 @@ class StateVisualizer:
     def _render_grid(self, surface, grid):
         for y_tile, row in enumerate(grid):
             for x_tile, tile in enumerate(row):
-                self.TERRAINS_IMG.blit_on_surface(
+                if tile == CUTTING_BOARD:
+                    #print("cutting board frame rects:", self.CUTTING_BOARD_IMG.frames_rectangles) #prints {'cutting_board': <rect(1, 1, 197, 256)>}
+                    self.CUTTING_BOARD_IMG.blit_on_surface(
+                        surface, self._position_in_unscaled_pixels((x_tile, y_tile)), StateVisualizer.TILE_TO_FRAME_NAME[tile], #TILE_TO_FRAME is cuttingboard
+                    )
+                else:
+                    self.TERRAINS_IMG.blit_on_surface(
                     surface,
                     self._position_in_unscaled_pixels((x_tile, y_tile)),
                     StateVisualizer.TILE_TO_FRAME_NAME[tile],
@@ -414,7 +428,7 @@ class StateVisualizer:
             num_tomatoes,
             num_onions,
         )
-
+    #add logic to render cutting board
     def _render_objects(self, surface, objects, grid):
         def render_soup(surface, obj, grid):
             (x_pos, y_pos) = obj.position
@@ -433,8 +447,15 @@ class StateVisualizer:
             )
 
         for obj in objects.values():
+            #("obj name: ", obj.name)
             if obj.name == "soup":
                 render_soup(surface, obj, grid)
+            elif obj.name == "cuttingboard": 
+                self.CUTTING_BOARD_IMG.blit_on_surface(
+                surface,
+                self._position_in_unscaled_pixels(obj.position),
+                "cuttingboard"  # or use a specific frame name if needed
+            )
             else:
                 self.OBJECTS_IMG.blit_on_surface(
                     surface,

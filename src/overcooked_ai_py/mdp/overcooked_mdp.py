@@ -1031,12 +1031,14 @@ EVENT_TYPES = [
     "tomato_drop",
     "useful_tomato_drop",
     "potting_tomato",
+    "cutting_tomato",
     # Onion events
     "onion_pickup",
     "useful_onion_pickup",
     "onion_drop",
     "useful_onion_drop",
     "potting_onion",
+    "cutting_onion",
     # Dish events
     "dish_pickup",
     "useful_dish_pickup",
@@ -1055,6 +1057,15 @@ EVENT_TYPES = [
     "catastrophic_tomato_potting",
     "useless_onion_potting",
     "useless_tomato_potting",
+    # Chop item -- can be useless when not needed for the recipe
+    "optimal_onion_cutting",
+    "optimal_tomato_cutting",
+    "viable_onion_cutting",
+    "viable_tomato_cutting",
+    "catastrophic_onion_cutting",
+    "catastrophic_tomato_cutting",
+    "useless_onion_cutting",
+    "useless_tomato_cutting",
 ]
 
 POTENTIAL_CONSTANTS = {
@@ -1184,6 +1195,7 @@ class OvercookedGridworld(object):
         mdp_config = copy.deepcopy(base_layout_params)
 
         layout_grid = [[c for c in row] for row in layout_grid]
+        print("layout grid:", layout_grid)
         OvercookedGridworld._assert_valid_grid(layout_grid)
 
         if "layout_name" not in mdp_config:
@@ -1437,6 +1449,7 @@ class OvercookedGridworld(object):
         first and then player 2's, without doing anything like collision checking.
         """
         pot_states = self.get_pot_states(new_state)
+        cutting_board_states = self.get_cutting_board_states(new_state)
         # We divide reward by agent to keep track of who contributed
         sparse_reward, shaped_reward = (
             [0] * self.num_players,
@@ -1572,9 +1585,34 @@ class OvercookedGridworld(object):
                 if obj.name == "soup":
                     delivery_rew = self.deliver_soup(new_state, player, obj)
                     sparse_reward[player_idx] += delivery_rew
-
                     # Log soup delivery
                     events_infos["soup_delivery"][player_idx] = True
+
+            #MODIFIED for cutting board
+            elif terrain_type == "C":
+                # If the cutting board is empty and the player holds a raw ingredient
+                if player.has_object() and player.get_object().name in Recipe.ALL_INGREDIENTS:
+                    obj = player.remove_object()
+                    # drop ingredient on the cutting board and start cutting
+                    # maybe add a method like begin_chopping() 
+                    obj.is_cutting = True
+                    obj.chop_tick = 0      # initialize chopping progress
+                    obj.chop_time = 5      # set how many ticks are needed (adjust as needed)
+                    new_state.add_object(obj, i_pos)
+                    cutting_rew = self.cut_ingredient(new_state, player, obj)
+                    shaped_reward[player_idx] += cutting_rew
+                    # Log a cutting event (e.g., "cutting_onion" or "cutting_tomato")
+                    events_infos["cutting_" + obj.name][player_idx] = True
+
+                # If the cutting board holds an object that is already chopped (ready to be picked up), not in recipe ALL ingredients
+                elif not player.has_object() and new_state.has_object(i_pos):
+                    obj = new_state.get_object(i_pos)
+                    if hasattr(obj, "is_cut") and obj.is_cut:
+                        self.log_object_pickup(events_infos, new_state, obj.name, cutting_board_states, player_idx)
+                        player.set_object(obj)
+                        new_state.remove_object(i_pos)
+                        cutting_rew = self.cut_ingredient(new_state, player, obj)
+                        shaped_reward[player_idx] += cutting_rew
 
         return sparse_reward, shaped_reward
 
@@ -1627,6 +1665,21 @@ class OvercookedGridworld(object):
                 * gamma ** (pot_tomato_steps * n_tomatoes)
                 * self.get_recipe_value(state, recipe, discounted=False)
             )
+    def cut_ingredient(self, state, player, ingredient):
+        """
+        Cut the ingredient, and get reward if it is a valid ingredient
+        But not if it is already cut.
+        """
+        if ingredient in Recipe.ALL_INGREDIENTS:
+            if ingredient.is_cut:
+                return 0
+            else:
+                player.remove_object()
+                ingredient.is_cut = True
+                # Add reward for cutting the ingredient
+                return self.get_recipe_value(state, ingredient.recipe)
+
+        return self.get_recipe_value(state, ingredient.recipe)
 
     def deliver_soup(self, state, player, soup):
         """
@@ -1798,6 +1851,9 @@ class OvercookedGridworld(object):
 
     def get_pot_locations(self):
         return list(self.terrain_pos_dict["P"])
+    
+    def get_cutting_board_locations(self):
+        return list(self.terrain_pos_dict["C"])
 
     def get_counter_locations(self):
         return list(self.terrain_pos_dict["X"])
@@ -1805,6 +1861,10 @@ class OvercookedGridworld(object):
     @property
     def num_pots(self):
         return len(self.get_pot_locations())
+    
+    @property
+    def num_cutting_board(self):
+        return len(self.get_cutting_board_locations())
 
     def get_pot_states(self, state):
         """Returns dict with structure:
@@ -1836,6 +1896,37 @@ class OvercookedGridworld(object):
                     ].append(pot_pos)
 
         return pots_states_dict
+    
+    def get_cutting_board_states(self, state):
+        """Returns dict with structure:
+        {
+         empty: [positions of empty boards]
+        'x_items': [soup objects with x items that have yet to start cooking],
+        'cooking': [soup objs that are being chopped but not ready]
+        'ready': [ready cut objs],
+        }
+        NOTE: all returned boards are just cutting board positions
+        """
+        cutting_board_states_dict = defaultdict(list)
+        for board_pos in self.get_cutting_board_locations():
+            if not state.has_object(board_pos):
+                cutting_board_states_dict["empty"].append(board_pos)
+            else:
+                food_item = state.get_object(board_pos)
+                # assert soup.name == "soup", (
+                #     "soup at " + pot_pos + " is not a soup but a " + soup.name
+                # )
+                if food_item.is_cut:
+                    cutting_board_states_dict["ready"].append(board_pos)
+                elif food_item.is_cutting:
+                    cutting_board_states_dict["cutting"].append(board_pos)
+                else:
+                    num_ingredients = len(food_item.ingredients)
+                    cutting_board_states_dict[
+                        "{}_items".format(num_ingredients)
+                    ].append(board_pos)
+
+        return cutting_board_states_dict
 
     def get_counter_objects_dict(self, state, counter_subset=None):
         """Returns a dictionary of pos:objects on counters by type"""
@@ -1853,6 +1944,10 @@ class OvercookedGridworld(object):
     def get_empty_counter_locations(self, state):
         counter_locations = self.get_counter_locations()
         return [pos for pos in counter_locations if not state.has_object(pos)]
+    
+    def get_empty_cutting_boards(self, cutting_board_states):
+        """Returns pots that have 0 items in them"""
+        return cutting_board_states["empty"]
 
     def get_empty_pots(self, pot_states):
         """Returns pots that have 0 items in them"""
@@ -2088,6 +2183,8 @@ class OvercookedGridworld(object):
             assert is_not_free(grid[-1][x]), "Bottom border must not be free"
 
         all_elements = [element for row in grid for element in row]
+        print("all elements", all_elements)
+       
         digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
         layout_digits = [e for e in all_elements if e in digits]
         num_players = len(layout_digits)
@@ -2098,7 +2195,7 @@ class OvercookedGridworld(object):
         ), "Some players were missing"
 
         assert all(
-            c in "XOPDST123456789 " for c in all_elements
+            c in "XOPDSTC123456789 " for c in all_elements
         ), "Invalid character in grid"
         assert all_elements.count("1") == 1, "'1' must be present exactly once"
         assert (

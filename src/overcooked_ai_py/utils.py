@@ -29,6 +29,7 @@ def load_pickle(filename):
 
 
 def load_dict_from_file(filepath):
+    print("filepath", filepath)
     with open(filepath, "r") as f:
         return eval(f.read())
 
@@ -221,6 +222,7 @@ def profile(fnc):
 
 
 def read_layout_dict(layout_name):
+    print(layout_name)
     return load_dict_from_file(
         os.path.join(LAYOUTS_DIR, layout_name + ".layout")
     )

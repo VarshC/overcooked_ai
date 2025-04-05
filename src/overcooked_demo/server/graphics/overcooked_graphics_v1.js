@@ -126,7 +126,8 @@ class OvercookedScene extends Phaser.Scene {
             'O': 'onions.png',
             'T': 'tomatoes.png',
             'D': 'dishes.png',
-            'S': 'serve.png'
+            'S': 'serve.png',
+            'C': 'cutting_board.png'
         };
         let pos_dict = this.terrain;
         for (let row in pos_dict) {
@@ -284,6 +285,20 @@ class OvercookedScene extends Phaser.Scene {
                 objsprite.setOrigin(0);
                 sprites['objects'][objpos] = {objsprite};
             }
+            else if (obj.name === 'cuttingboard') {
+                let spriteframe = "cuttingboard.png";
+                let objsprite = this.add.sprite(
+                    this.tileSize*x,
+                    this.tileSize*y,
+                    "objects",
+                    spriteframe
+                );
+                objsprite.setDisplaySize(this.tileSize, this.tileSize);
+                objsprite.depth = 1;
+                objsprite.setOrigin(0);
+                sprites['objects'][objpos] = {objsprite};
+            }
+            
             else {
                 if (obj.name === 'onion') {
                     spriteframe = "onion.png";

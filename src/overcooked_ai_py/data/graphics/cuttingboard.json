@@ -1,0 +1,41 @@
+{
+	"textures": [
+		{
+			"image": "cuttingboard.png",
+			"format": "RGBA8888",
+			"size": {
+				"w": 199,
+				"h": 258
+			},
+			"scale": 1,
+			"frames": [
+				{
+					"filename": "cutting_board.png",
+					"rotated": false,
+					"trimmed": false,
+					"sourceSize": {
+						"w": 197,
+						"h": 256
+					},
+					"spriteSourceSize": {
+						"x": 0,
+						"y": 0,
+						"w": 197,
+						"h": 256
+					},
+					"frame": {
+						"x": 1,
+						"y": 1,
+						"w": 197,
+						"h": 256
+					}
+				}
+			]
+		}
+	],
+	"meta": {
+		"app": "https://www.codeandweb.com/texturepacker",
+		"version": "3.0",
+		"smartupdate": "$TexturePacker:SmartUpdate:d4c0d59b6918222a8e9c6cd34b9c1287:07e50ef3a67eb7f0d3b4affb71ab67f5:3b59eeb5dfd356f2bae314dd696f48a8$"
+	}
+}
