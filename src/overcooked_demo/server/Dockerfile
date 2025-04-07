@@ -1,3 +1,4 @@
+FROM overcooked-helper as code
 FROM python:3.10-buster 
 
 ARG BUILD_ENV
@@ -14,13 +15,17 @@ RUN pip install -r requirements.txt
 RUN if [ "$BUILD_ENV" = "production" ] ; then pip install eventlet ; fi
 
 # Clone chai code
-RUN git clone --recursive https://github.com/HumanCompatibleAI/overcooked_ai.git --branch $OVERCOOKED_BRANCH --single-branch /overcooked_ai
+# RUN git clone --recursive https://github.com/HumanCompatibleAI/overcooked_ai.git --branch $OVERCOOKED_BRANCH --single-branch /overcooked_ai
+# COPY --from=code /overcooked_ai /overcooked_ai 
 
 # Dummy data_dir so things don't break
-RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /overcooked_ai/src/human_aware_rl/data_dir.py
+# RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /overcooked_ai/src/human_aware_rl/data_dir.py
 
 # Install chai dependencies
-RUN pip install -e '/overcooked_ai[harl]'
+# RUN pip install -e '/overcooked_ai[harl]'
+COPY ./overcooked_ai_requirements.txt ./overcooked_ai_requirements.txt
+RUN pip install -r overcooked_ai_requirements.txt
+
 
 RUN apt-get -y update
 RUN apt-get install -y libgl1-mesa-dev
@@ -30,6 +35,14 @@ COPY ./static ./static
 COPY ./*.py ./
 COPY ./graphics/$GRAPHICS ./static/js/graphics.js
 COPY ./config.json ./config.json
+
+
+# Copy CHAI after instead so dont have to wait for install
+COPY --from=code /overcooked_ai /overcooked_ai 
+
+RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /overcooked_ai/src/human_aware_rl/data_dir.py
+
+RUN pip install -e '/overcooked_ai[harl]'
 
 
 

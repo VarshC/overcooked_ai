@@ -1,0 +1,3 @@
+# Dockerfile.helper
+FROM alpine
+COPY . /overcooked_ai
