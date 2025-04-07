@@ -1,4 +1,6 @@
 #!/bin/sh
+docker build -f ../../Dockerfile.helper -t overcooked-helper ../../../overcooked_ai
+
 if [[ $1 = prod* ]];
 then
     echo "production"
