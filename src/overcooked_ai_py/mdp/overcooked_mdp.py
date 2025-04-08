@@ -382,7 +382,10 @@ class Recipe:
     def from_dict(cls, obj_dict):
         return cls(**obj_dict)
 
-
+ORIGINAL_OBJECTS = {"onion", "tomato"}
+GRILLABLE_OBJECTS = {"beef"}
+GRILLABLE_OBJECTS_EXPANDED = { f'{name}_{suffix}' for name in GRILLABLE_OBJECTS for suffix in ['raw', 'cooked']}
+OBJECT_NAMES = ORIGINAL_OBJECTS | GRILLABLE_OBJECTS_EXPANDED
 class ObjectState(object):
     """
     State of an object in OvercookedGridworld.
@@ -405,7 +408,7 @@ class ObjectState(object):
         self._position = new_pos
 
     def is_valid(self):
-        return self.name in ["onion", "tomato", "dish", "beef"]
+        return self.name in OBJECT_NAMES
 
     def deepcopy(self):
         return ObjectState(self.name, self.position)
@@ -708,12 +711,13 @@ class GrillableState(ObjectState):
         """
         Represents a grillable item.
         """
-        super(GrillableState, self).__init__(name, position, **kwargs)
+        super(GrillableState, self).__init__(f'{name}_raw', position, **kwargs)
         self._cooking_tick = cooking_tick
         self._cook_time = cook_time
         self._waiting_for_flip = False
         self._flip_tick = 0
         self._flip_amount = flip_amount
+        self._done = False
 
     def __eq__(self, other):
         return (
@@ -749,7 +753,7 @@ class GrillableState(ObjectState):
     def is_ready(self):
         if self.is_idle:
             return False
-        return self._flip_tick >= self._flip_amount
+        return self._cooking_tick == self._cook_time * (self._flip_amount + 1)
 
     @property
     def is_idle(self):
@@ -757,11 +761,15 @@ class GrillableState(ObjectState):
 
     @property
     def is_ready_for_flip(self):
-        return self._cook_tick > 0 and self._waiting_for_flip
+        return self._cooking_tick > 0 and self._waiting_for_flip
     
     @property
     def is_cooking(self):
         return not self.is_idle and not self.is_ready
+    
+    @property
+    def is_done(self):
+        return self._done
 
     def begin_cooking(self):
         if not self.is_idle:
@@ -775,9 +783,11 @@ class GrillableState(ObjectState):
             raise ValueError("Cannot cook an item that is already done")
         if self.is_ready_for_flip:
             raise ValueError("Cannot cook any further until fipped")
-        self._cook_tick += 1
-        if (self._cook_tick % self._cook_time == 0):
+        self._cooking_tick += 1
+        if (self._cooking_tick % self._cook_time == 0 and self._flip_tick < self._flip_amount):
             self._waiting_for_flip = True
+        if self.is_ready:
+            self.name = f'{self.name[:-4]}_cooked'
 
     def flip(self):
         if self.is_idle:
@@ -788,6 +798,41 @@ class GrillableState(ObjectState):
             raise ValueError("Cannot flip until ready to flip")
         self._flip_tick += 1
         self._waiting_for_flip = False
+    
+    def done(self):
+        if not self.is_ready:
+            raise ValueError("Not ready to be done")
+        self._done = True
+
+    def deepcopy(self):
+        grillable =  GrillableState(
+            name=self.name, 
+            position=self.position, 
+            cooking_tick=self._cooking_tick, 
+            cook_time=self._cook_time,
+            flip_amount=self._flip_amount,
+        )
+        grillable.name = self.name
+        grillable._waiting_for_flip = self._waiting_for_flip
+        grillable._flip_tick = self._flip_tick
+        grillable._done = self._done
+        return grillable
+    
+    def to_dict(self):
+        info_dict = super(GrillableState, self).to_dict()
+        info_dict["cooking_tick"] = self._cooking_tick
+        info_dict["is_cooking"] = self.is_cooking
+        info_dict["is_ready"] = self.is_ready
+        info_dict["is_idle"] = self.is_idle
+        info_dict["is_ready_for_flip"] = self.is_ready_for_flip
+        info_dict["cook_time"] = -1 if self.is_idle else self._cook_time
+        info_dict["flip_amount"] = self._flip_amount
+        info_dict["done"] = self._done
+
+        # This is for backwards compatibility w/ overcooked-demo
+        # Should be removed once overcooked-demo is updated to use 'cooking_tick' instead of '_cooking_tick'
+        info_dict["_cooking_tick"] = self._cooking_tick
+        return info_dict
 
 class PlayerState(object):
     """
@@ -1189,6 +1234,12 @@ EVENT_TYPES = [
     "useful_beef_drop",
     "grilling_beef"
 ]
+
+event_action_suffix = ['pickup', 'drop']
+event_prefix = ['', 'useful_']
+EVENT_TYPES.extend(
+    [f'{prefix}{item}_{suffix}' for item in GRILLABLE_OBJECTS_EXPANDED for suffix in event_action_suffix for prefix in event_prefix]
+)
 
 POTENTIAL_CONSTANTS = {
     "default": {
@@ -1739,7 +1790,9 @@ class OvercookedGridworld(object):
                     events_infos["soup_delivery"][player_idx] = True
 
             elif terrain_type == "G" and player.has_object():
-                if isinstance(player.get_object(), GrillableState):
+
+                if isinstance(player.get_object(), GrillableState) and not player.get_object().is_done:
+                    
                     # If grill is empty 
                     if not new_state.has_object(i_pos):
                         # Place things in grill
@@ -1756,6 +1809,17 @@ class OvercookedGridworld(object):
                 elif self.grillable_to_be_flipped_at_location(new_state, i_pos):
                     grillable = new_state.get_object(i_pos)
                     grillable.flip()
+                elif self.grillable_ready_at_location(new_state, i_pos):
+                    grillable = new_state.remove_object(i_pos)
+                    grillable.done()
+                    player.set_object(grillable)
+                    self.log_object_pickup(
+                        events_infos,
+                        new_state,
+                        grillable.name,
+                        pot_states,
+                        player_idx,
+                    )
 
 
         return sparse_reward, shaped_reward
@@ -2102,6 +2166,7 @@ class OvercookedGridworld(object):
             and not obj.is_ready
             and not obj.is_ready_for_flip
         )
+
     def grillable_to_be_flipped_at_location(self, state: OvercookedState, pos):
         if not state.has_object(pos):
             return False
@@ -2111,6 +2176,15 @@ class OvercookedGridworld(object):
             and obj.is_cooking
             and not obj.is_ready
             and obj.is_ready_for_flip
+        )
+
+    def grillable_ready_at_location(self, state: OvercookedState, pos):
+        if not state.has_object(pos):
+            return False
+        obj = state.get_object(pos)
+        return (
+            isinstance(obj, GrillableState)
+            and obj.is_ready
         )
 
     def _check_valid_state(self, state):
@@ -2283,7 +2357,8 @@ class OvercookedGridworld(object):
             "P": "pot",
             "D": "dish supply",
             "S": "serving location",
-            "B": "beef item"
+            "B": "beef item",
+            "G": "grill"
             }
         
         ALL_BLOCKS = {

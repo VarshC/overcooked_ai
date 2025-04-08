@@ -119,6 +119,10 @@ class OvercookedScene extends Phaser.Scene {
         this.load.multiatlas("soups",
             this.assets_loc + "soups.json",
             this.assets_loc)
+        this.load.atlas("grill_items",
+            this.assets_loc + "grill_items.png",
+            this.assets_loc + "grill_items.json"
+        );
     }
 
     create() {
@@ -149,7 +153,8 @@ class OvercookedScene extends Phaser.Scene {
             'O': 'onions.png',
             'T': 'tomatoes.png',
             'D': 'dishes.png',
-            'S': 'serve.png'
+            'S': 'serve.png',
+            'G': 'grill.png'
         };
         let pos_dict = this.terrain;
         for (let row in pos_dict) {
@@ -299,6 +304,43 @@ class OvercookedScene extends Phaser.Scene {
 
                 sprites['objects'][objpos] = objs_here
             }
+            else if ((obj.name === 'beef_raw' || obj.name === 'beef_cooked') && (terrain_type === 'G')) {
+                spriteframe = obj.is_ready ? "grill_cooked.png" : "grill_raw.png"
+
+                let objsprite = this.add.sprite(
+                    this.tileSize*x,
+                    this.tileSize*y,
+                    "grill_items",
+                    spriteframe
+                );
+                objsprite.setDisplaySize(this.tileSize, this.tileSize);
+                objsprite.depth = 1;
+                objsprite.setOrigin(0);
+
+                console.log(obj)
+
+                let objs_here = {objsprite};
+                let show_time = true;
+                if (obj._cooking_tick > obj.cook_time * (obj.flip_amount + 1) && !this.show_post_cook_time || obj._cooking_tick == -1) {
+                    show_time = false;
+                }
+                if (show_time) {
+                    let timesprite =  this.add.text(
+                        this.tileSize*(x+.5),
+                        this.tileSize*(y+.6),
+                        String(obj._cooking_tick),
+                        {
+                            font: "25px Arial",
+                            fill: "red",
+                            align: "center",
+                        }
+                    );
+                    timesprite.depth = 2;
+                    objs_here['timesprite'] = timesprite;
+                }
+
+                sprites['objects'][objpos] = objs_here
+            }
             else if (obj.name === 'soup') {
                 let ingredients = obj._ingredients.map(x => x['name']);
                 let soup_status = "done";
@@ -323,8 +365,10 @@ class OvercookedScene extends Phaser.Scene {
                 }
                 else if (obj.name === 'dish') {
                     spriteframe = "dish.png";
-                } else if(obj.name === 'beef') {
-                    spriteframe = "beef.png"
+                } else if(obj.name === 'beef_raw') {
+                    spriteframe = 'beef_raw.png'
+                } else if(obj.name === 'beef_cooked') {
+                    spriteframe = 'beef_cooked.png'
                 }
                 let objsprite = this.add.sprite(
                     this.tileSize*x,

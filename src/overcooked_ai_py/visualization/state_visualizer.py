@@ -13,6 +13,8 @@ from overcooked_ai_py.mdp.layout_generator import (
     POT,
     SERVING_LOC,
     TOMATO_DISPENSER,
+    GRILL,
+
 )
 from overcooked_ai_py.static import FONTS_DIR, GRAPHICS_DIR
 from overcooked_ai_py.utils import (
@@ -85,6 +87,7 @@ class StateVisualizer:
         "cooking_timer_font_path": roboto_path,
         "cooking_timer_system_font_name": None,
         "cooking_timer_font_color": (255, 0, 0),  # red
+        "flip_counter_font_color": (255, 165, 0),  # orange
         "grid": None,
         "background_color": (155, 101, 0),  # color of empty counter
         "is_rendering_action_probs": True,  # whatever represent visually on the grid what actions some given agent would make
@@ -97,6 +100,7 @@ class StateVisualizer:
         POT: "pot",
         DISH_DISPENSER: "dishes",
         SERVING_LOC: "serve",
+        GRILL: "grill",
     }
 
     def __init__(self, **kwargs):
@@ -414,6 +418,10 @@ class StateVisualizer:
             num_tomatoes,
             num_onions,
         )
+    
+    @staticmethod
+    def _beef_frame_name(status):
+        return f"beef_{status}"
 
     def _render_objects(self, surface, objects, grid):
         def render_soup(surface, obj, grid):
@@ -431,10 +439,29 @@ class StateVisualizer:
                 self._position_in_unscaled_pixels(obj.position),
                 frame_name,
             )
+        # def render_beef(surface, object, grid):
+        #     (x_pos, y_pos) = obj.position
+        #     if grid[y_pos][x_pos] == GRILL:
+        #         if obj.is_ready:
+        #             frame_name = "grill_cooked"
+        #         else:
+        #             frame_name = "grill_raw"
+        #     else:
+        #         if obj.is_done:
+        #             frame_name = "beef_cooked"
+        #         else:
+        #             frame_name = "beef_raw"
+        #     self.OBJECTS_IMG.blit_on_surface(
+        #         surface,
+        #         self._position_in_unscaled_pixels(obj.position),
+        #         frame_name,
+        #     )
 
         for obj in objects.values():
             if obj.name == "soup":
                 render_soup(surface, obj, grid)
+            # elif obj.name == "beef":
+            #     render_beef(surface, obj, grid)
             else:
                 self.OBJECTS_IMG.blit_on_surface(
                     surface,
@@ -466,6 +493,41 @@ class StateVisualizer:
                         + int((self.tile_size - text_surface.get_height()) * 0.9),
                     )
                     surface.blit(text_surface, font_position)
+            if grid[y_pos][x_pos] == GRILL: # All grillable objects
+                if obj._cooking_tick != -1 and (
+                    obj._cooking_tick <= obj._cook_time or self.show_timer_when_cooked
+                ):
+                    text_surface = self.cooking_timer_font.render(
+                        str(obj._cooking_tick),
+                        True,
+                        self.cooking_timer_font_color,
+                    )
+                    flip_count = self.cooking_timer_font.render(
+                        str(obj._flip_tick),
+                        True,
+                        self.flip_counter_font_color,
+                    )
+
+                    (tile_pos_x, tile_pos_y) = self._position_in_scaled_pixels(
+                        obj.position
+                    )
+
+                    # calculate font position to be in center on x axis, and 0.9 from top on y axis
+                    font_position = (
+                        tile_pos_x
+                        + int((self.tile_size - text_surface.get_width()) * 0.5),
+                        tile_pos_y
+                        + int((self.tile_size - text_surface.get_height()) * 0.9),
+                    )
+                    surface.blit(text_surface, font_position)
+
+                    font_position = (
+                        tile_pos_x
+                        + int((self.tile_size - text_surface.get_width()) * 0.5),
+                        tile_pos_y
+                        + int((self.tile_size - text_surface.get_height()) * 0.1),
+                    )
+                    surface.blit(flip_count, font_position)
 
     def _sorted_hud_items(self, hud_data):
         def default_order_then_alphabetic(item):
