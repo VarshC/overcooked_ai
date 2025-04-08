@@ -382,7 +382,7 @@ class Recipe:
     def from_dict(cls, obj_dict):
         return cls(**obj_dict)
 
-ORIGINAL_OBJECTS = {"onion", "tomato"}
+ORIGINAL_OBJECTS = {"onion", "tomato", "dish"}
 GRILLABLE_OBJECTS = {"beef"}
 GRILLABLE_OBJECTS_EXPANDED = { f'{name}_{suffix}' for name in GRILLABLE_OBJECTS for suffix in ['raw', 'cooked']}
 OBJECT_NAMES = ORIGINAL_OBJECTS | GRILLABLE_OBJECTS_EXPANDED
