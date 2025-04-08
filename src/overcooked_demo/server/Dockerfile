@@ -42,6 +42,10 @@ COPY --from=code /overcooked_ai /overcooked_ai
 
 RUN echo "import os; DATA_DIR=os.path.abspath('.')" >> /overcooked_ai/src/human_aware_rl/data_dir.py
 
+# RUN ls -alh
+# RUN ls -alh /overcooked_ai/src/overcooked_ai_py/data/graphics/ ./static/assets
+RUN cp /overcooked_ai/src/overcooked_ai_py/data/graphics/* ./static/assets
+
 RUN pip install -e '/overcooked_ai[harl]'
 
 

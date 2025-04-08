@@ -405,7 +405,7 @@ class ObjectState(object):
         self._position = new_pos
 
     def is_valid(self):
-        return self.name in ["onion", "tomato", "dish"]
+        return self.name in ["onion", "tomato", "dish", "beef"]
 
     def deepcopy(self):
         return ObjectState(self.name, self.position)
@@ -702,7 +702,6 @@ class GrillableState(ObjectState):
             position, 
             cooking_tick=-1, 
             cook_time=None,
-            flip_period=None,
             flip_amount=None,
             **kwargs
     ):
@@ -710,11 +709,10 @@ class GrillableState(ObjectState):
         Represents a grillable item.
         """
         super(GrillableState, self).__init__(name, position, **kwargs)
-        self._cook_tick = cooking_tick
+        self._cooking_tick = cooking_tick
         self._cook_time = cook_time
         self._waiting_for_flip = False
         self._flip_tick = 0
-        self._flip_period = flip_period
         self._flip_amount = flip_amount
 
     def __eq__(self, other):
@@ -751,7 +749,7 @@ class GrillableState(ObjectState):
     def is_ready(self):
         if self.is_idle:
             return False
-        return self._cooking_tick >= self._cook_time and self._flip_tick >= self._flip_amount
+        return self._flip_tick >= self._flip_amount
 
     @property
     def is_idle(self):
@@ -778,7 +776,7 @@ class GrillableState(ObjectState):
         if self.is_ready_for_flip:
             raise ValueError("Cannot cook any further until fipped")
         self._cook_tick += 1
-        if (self._cook_tick % self._flip_period == 0):
+        if (self._cook_tick % self._cook_time == 0):
             self._waiting_for_flip = True
 
     def flip(self):
@@ -1046,6 +1044,37 @@ class OvercookedState(object):
         return cls.from_players_pos_and_or(
             dummy_pos_and_or, bonus_orders, all_orders
         )
+    
+    @classmethod
+    def from_players_pos_and_or_with_object(
+        cls, players_pos_and_or, bonus_orders=[], all_orders=[], objects: Mapping[Tuple[int, int], ObjectState]={}
+    ):
+        """
+        Make a dummy OvercookedState with objects based on the passed in player
+        positions and orientations and order list
+        """
+        return cls(
+            [
+                PlayerState(*player_pos_and_or)
+                for player_pos_and_or in players_pos_and_or
+            ],
+            objects=objects,
+            bonus_orders=bonus_orders,
+            all_orders=all_orders,
+        )
+    
+    @classmethod
+    def from_player_position_and_object(
+        cls, player_positions, bonus_orders=[], all_orders=[], objects: Mapping[Tuple[int, int], ObjectState]={}
+    ):
+        """
+        Make a dummy OvercookedState with objects and with players facing
+        North based on the passed in player positions and order list
+        """
+        dummy_pos_and_or = [(pos, Direction.NORTH) for pos in player_positions]
+        return cls.from_players_pos_and_or_with_object(
+            dummy_pos_and_or, bonus_orders, all_orders, objects=objects
+        )
 
     def deepcopy(self):
         return OvercookedState(
@@ -1196,6 +1225,7 @@ class OvercookedGridworld(object):
         terrain,
         start_player_positions,
         start_bonus_orders=[],
+        start_objects={},
         rew_shaping_params=None,
         layout_name="unnamed_layout",
         start_all_orders=[],
@@ -1236,6 +1266,7 @@ class OvercookedGridworld(object):
         self.terrain_pos_dict = self._get_terrain_type_pos_dict()
         self.start_player_positions = start_player_positions
         self.num_players = len(start_player_positions)
+        self.start_objects = start_objects
         self.start_bonus_orders = start_bonus_orders
         self.reward_shaping_params = (
             BASE_REW_SHAPING_PARAMS
@@ -1315,16 +1346,19 @@ class OvercookedGridworld(object):
         for y, row in enumerate(layout_grid):
             for x, c in enumerate(row):
                 if c in ONE_INSTANCE_ITEMS:
-                    layout_grid[y][y] = " "
+                    layout_grid[y][x] = "X"
         
                     if c == "B":
-                        obj = GrillableState("beef", (x,y):::::::)
+                        obj = GrillableState("beef", (x,y), cook_time=5, flip_amount=3)
                     
-                    starting_items[(x,y)] = 
+                    starting_items[(x,y)] = obj
 
         # After removing player positions from grid we have a terrain mtx
         mdp_config["terrain"] = layout_grid
         mdp_config["start_player_positions"] = player_positions
+        mdp_config["start_objects"] = starting_items
+
+        print("AAAAAAAAAAA")
 
         for k, v in params_to_overwrite.items():
             curr_val = mdp_config.get(k, None)
@@ -1414,10 +1448,11 @@ class OvercookedGridworld(object):
     def get_standard_start_state(self):
         if self.start_state:
             return self.start_state
-        start_state = OvercookedState.from_player_positions(
+        start_state = OvercookedState.from_player_position_and_object(
             self.start_player_positions,
             bonus_orders=self.start_bonus_orders,
             all_orders=self.start_all_orders,
+            objects=self.start_objects,
         )
         return start_state
 
@@ -2241,6 +2276,21 @@ class OvercookedGridworld(object):
         space), 'O' (onion supply), 'P' (pot), 'D' (dish supply), 'S' (serving
         location), '1' (player 1) and '2' (player 2).
         """
+        NON_EMPTY_BLOCKS = {
+            "X": "counter",
+            "O": "onion supply",
+            "T": "tomato supply",
+            "P": "pot",
+            "D": "dish supply",
+            "S": "serving location",
+            "B": "beef item"
+            }
+        
+        ALL_BLOCKS = {
+            k:v for k,v in NON_EMPTY_BLOCKS.items()
+        }
+        ALL_BLOCKS[" "] = "empty"
+
         height = len(grid)
         width = len(grid[0])
 
@@ -2249,7 +2299,7 @@ class OvercookedGridworld(object):
 
         # Borders must not be free spaces
         def is_not_free(c):
-            return c in "XOPDST"
+            return c in NON_EMPTY_BLOCKS.keys()
 
         for y in range(height):
             assert is_not_free(grid[y][0]), "Left border must not be free"
@@ -2269,7 +2319,7 @@ class OvercookedGridworld(object):
         ), "Some players were missing"
 
         assert all(
-            c in "XOPDST123456789 " for c in all_elements
+            c in (set(ALL_BLOCKS.keys()) | set(digits)) for c in all_elements
         ), "Invalid character in grid"
         assert all_elements.count("1") == 1, "'1' must be present exactly once"
 

@@ -323,6 +323,8 @@ class OvercookedScene extends Phaser.Scene {
                 }
                 else if (obj.name === 'dish') {
                     spriteframe = "dish.png";
+                } else if(obj.name === 'beef') {
+                    spriteframe = "beef.png"
                 }
                 let objsprite = this.add.sprite(
                     this.tileSize*x,
