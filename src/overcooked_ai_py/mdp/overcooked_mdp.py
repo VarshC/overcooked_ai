@@ -1449,7 +1449,7 @@ class OvercookedGridworld(object):
         first and then player 2's, without doing anything like collision checking.
         """
         pot_states = self.get_pot_states(new_state)
-        cutting_board_states = self.get_cutting_board_states(new_state)
+        cutting_board_states = self.get_cuttingboard_states(new_state)
         # We divide reward by agent to keep track of who contributed
         sparse_reward, shaped_reward = (
             [0] * self.num_players,
@@ -1852,7 +1852,7 @@ class OvercookedGridworld(object):
     def get_pot_locations(self):
         return list(self.terrain_pos_dict["P"])
     
-    def get_cutting_board_locations(self):
+    def get_cuttingboard_locations(self):
         return list(self.terrain_pos_dict["C"])
 
     def get_counter_locations(self):
@@ -1864,7 +1864,7 @@ class OvercookedGridworld(object):
     
     @property
     def num_cutting_board(self):
-        return len(self.get_cutting_board_locations())
+        return len(self.get_cuttingboard_locations())
 
     def get_pot_states(self, state):
         """Returns dict with structure:
@@ -1897,7 +1897,7 @@ class OvercookedGridworld(object):
 
         return pots_states_dict
     
-    def get_cutting_board_states(self, state):
+    def get_cuttingboard_states(self, state):
         """Returns dict with structure:
         {
          empty: [positions of empty boards]
@@ -1908,7 +1908,7 @@ class OvercookedGridworld(object):
         NOTE: all returned boards are just cutting board positions
         """
         cutting_board_states_dict = defaultdict(list)
-        for board_pos in self.get_cutting_board_locations():
+        for board_pos in self.get_cuttingboard_locations():
             if not state.has_object(board_pos):
                 cutting_board_states_dict["empty"].append(board_pos)
             else:
@@ -2173,7 +2173,7 @@ class OvercookedGridworld(object):
 
         # Borders must not be free spaces
         def is_not_free(c):
-            return c in "XOPDST"
+            return c in "XOPDSCT"
 
         for y in range(height):
             assert is_not_free(grid[y][0]), "Left border must not be free"
@@ -2494,6 +2494,7 @@ class OvercookedGridworld(object):
             "tomato_disp_loc",
             "dish_disp_loc",
             "serve_loc",
+            "cuttingboard_loc"
         ]
         variable_map_features = [
             "onions_in_pot",
@@ -2502,6 +2503,7 @@ class OvercookedGridworld(object):
             "tomatoes_in_soup",
             "soup_cook_time_remaining",
             "soup_done",
+            "cuttingboard",
             "dishes",
             "onions",
             "tomatoes",
@@ -2545,7 +2547,8 @@ class OvercookedGridworld(object):
 
             for loc in self.get_counter_locations():
                 state_mask_dict["counter_loc"][loc] = 1
-
+            for loc in self.get_cuttingboard_locations():
+                state_mask_dict["cuttingboard_loc"][loc] = 1
             for loc in self.get_pot_locations():
                 state_mask_dict["pot_loc"][loc] = 1
 
@@ -2627,6 +2630,8 @@ class OvercookedGridworld(object):
                     state_mask_dict["onions"] += make_layer(obj.position, 1)
                 elif obj.name == "tomato":
                     state_mask_dict["tomatoes"] += make_layer(obj.position, 1)
+                elif obj.name == "tomato":
+                    state_mask_dict["cuttingboard"] += make_layer(obj.position, 1)
                 else:
                     raise ValueError("Unrecognized object")
 

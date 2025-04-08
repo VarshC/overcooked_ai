@@ -222,7 +222,7 @@ def profile(fnc):
 
 
 def read_layout_dict(layout_name):
-    print(layout_name)
+    #print(layout_name)
     return load_dict_from_file(
         os.path.join(LAYOUTS_DIR, layout_name + ".layout")
     )
