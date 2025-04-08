@@ -392,8 +392,8 @@ class TestGridworld(unittest.TestCase):
             mdp = OvercookedGridworld.from_grid(["XXPXX", "O  1O", "X1  X", "XDXSX"])
 
         with self.assertRaises(AssertionError):
-            # B is not a valid element.
-            mdp = OvercookedGridworld.from_grid(["XBPXX", "O  2O", "X1  X", "XDXSX"])
+            # K is not a valid element.
+            mdp = OvercookedGridworld.from_grid(["XKPXX", "O  2O", "X1  X", "XDXSX"])
 
     def test_start_positions(self):
         actual_start_state = self.base_mdp.get_standard_start_state()
