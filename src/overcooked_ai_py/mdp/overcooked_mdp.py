@@ -2,6 +2,8 @@ import copy
 import itertools
 import warnings
 from collections import Counter, defaultdict
+from collections.abc import Iterable, Mapping
+from typing import Tuple
 from functools import reduce
 
 import numpy as np
@@ -693,6 +695,102 @@ class SoupState(ObjectState):
         return soup
 
 
+class GrillableState(ObjectState):
+    def __init__(
+            self, 
+            name, 
+            position, 
+            cooking_tick=-1, 
+            cook_time=None,
+            flip_period=None,
+            flip_amount=None,
+            **kwargs
+    ):
+        """
+        Represents a grillable item.
+        """
+        super(GrillableState, self).__init__(name, position, **kwargs)
+        self._cook_tick = cooking_tick
+        self._cook_time = cook_time
+        self._waiting_for_flip = False
+        self._flip_tick = 0
+        self._flip_period = flip_period
+        self._flip_amount = flip_amount
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, GrillableState)
+            and self.name == other.name
+            and self.position == other.position
+            and self._cooking_tick == other._cooking_tick
+            and self._flip_tick == other._flip_tick
+            and self._waiting_for_flip == other._waiting_for_flip
+        )
+
+    def __hash__(self):
+        supercls_hash = super(GrillableState, self).__hash__()
+        return hash((supercls_hash, self._cooking_tick, self._flip_tick, self._waiting_for_flip))
+
+    def __repr__(self):
+        supercls_str = super(GrillableState, self).__repr__()
+        return "{}\nCooking Tick:\t{}\nFlip Tick:\t{}\nFlip Pending:\t{}".format(
+            supercls_str, self._cooking_tick, self._flip_tick, self._waiting_for_flip
+        )
+    
+    def __str__(self):
+        res = "{"
+        if self.is_cooking:
+            res += str(self._cooking_tick)
+        elif self.is_ready_for_flip:
+            res += str("=")
+        elif self.is_ready:
+            res += str("✓")
+        return res
+
+    @property
+    def is_ready(self):
+        if self.is_idle:
+            return False
+        return self._cooking_tick >= self._cook_time and self._flip_tick >= self._flip_amount
+
+    @property
+    def is_idle(self):
+        return self._cooking_tick < 0
+
+    @property
+    def is_ready_for_flip(self):
+        return self._cook_tick > 0 and self._waiting_for_flip
+    
+    @property
+    def is_cooking(self):
+        return not self.is_idle and not self.is_ready
+
+    def begin_cooking(self):
+        if not self.is_idle:
+            raise ValueError("Cannot begin cooking this soup at this time")
+        self._cooking_tick = 0
+
+    def cook(self):
+        if self.is_idle:
+            raise ValueError("Must begin cooking before advancing cook tick")
+        if self.is_ready:
+            raise ValueError("Cannot cook an item that is already done")
+        if self.is_ready_for_flip:
+            raise ValueError("Cannot cook any further until fipped")
+        self._cook_tick += 1
+        if (self._cook_tick % self._flip_period == 0):
+            self._waiting_for_flip = True
+
+    def flip(self):
+        if self.is_idle:
+            raise ValueError("Must begin cooking before able to flip")
+        if self.is_ready:
+            raise ValueError("Cannot flip an item that is already done")
+        if not self.is_ready_for_flip:
+            raise ValueError("Cannot flip until ready to flip")
+        self._flip_tick += 1
+        self._waiting_for_flip = False
+
 class PlayerState(object):
     """
     State of a player in OvercookedGridworld.
@@ -786,8 +884,8 @@ class OvercookedState(object):
 
     def __init__(
         self,
-        players,
-        objects,
+        players: Iterable[PlayerState],
+        objects: Mapping[Tuple[int,int], ObjectState],
         bonus_orders=[],
         all_orders=[],
         timestep=0,
@@ -1055,6 +1153,12 @@ EVENT_TYPES = [
     "catastrophic_tomato_potting",
     "useless_onion_potting",
     "useless_tomato_potting",
+    # Grill Events
+    "beef_pickup",
+    "useful_beef_pickup",
+    "beef_drop",
+    "useful_beef_drop",
+    "grilling_beef"
 ]
 
 POTENTIAL_CONSTANTS = {
@@ -1204,6 +1308,19 @@ class OvercookedGridworld(object):
 
         num_players = len([x for x in player_positions if x is not None])
         player_positions = player_positions[:num_players]
+
+        # Modify grid items that is not dispensor as items
+        ONE_INSTANCE_ITEMS = { "B" }
+        starting_items = {}
+        for y, row in enumerate(layout_grid):
+            for x, c in enumerate(row):
+                if c in ONE_INSTANCE_ITEMS:
+                    layout_grid[y][y] = " "
+        
+                    if c == "B":
+                        obj = GrillableState("beef", (x,y):::::::)
+                    
+                    starting_items[(x,y)] = 
 
         # After removing player positions from grid we have a terrain mtx
         mdp_config["terrain"] = layout_grid
@@ -1429,7 +1546,7 @@ class OvercookedGridworld(object):
             )
         return new_state, infos
 
-    def resolve_interacts(self, new_state, joint_action, events_infos):
+    def resolve_interacts(self, new_state: OvercookedState, joint_action, events_infos):
         """
         Resolve any INTERACT actions, if present.
 
@@ -1512,6 +1629,16 @@ class OvercookedGridworld(object):
                 obj = ObjectState("dish", pos)
                 player.set_object(obj)
 
+            # Not beef dispensor
+            # elif terrain_type == "B" and player.help_object is None:
+            #     self.log_object_pickup(
+            #         events_infos, new_state, "beef", pot_states, player_idx
+            #     )
+                
+            #     # Pick up beef
+            #     # Remove beef from counter (since its not dispenser)
+            #     obj = new_state.remove_object(i_pos)
+            #     player.set_object(obj)
             elif terrain_type == "P" and not player.has_object():
                 # An interact action will only start cooking the soup if we are using the new dynamics
                 if (
@@ -1575,6 +1702,26 @@ class OvercookedGridworld(object):
 
                     # Log soup delivery
                     events_infos["soup_delivery"][player_idx] = True
+
+            elif terrain_type == "G" and player.has_object():
+                if isinstance(player.get_object(), GrillableState):
+                    # If grill is empty 
+                    if not new_state.has_object(i_pos):
+                        # Place things in grill
+                        obj = player.remove_object()
+                        new_state.add_object(obj, i_pos)
+                    else:
+                        # Do nothing
+                        pass
+
+            elif terrain_type == "G" and not player.has_object():
+                if self.grillable_to_be_grilled_at_location(new_state, i_pos):
+                    grillable = new_state.get_object(i_pos)
+                    grillable.begin_cooking()
+                elif self.grillable_to_be_flipped_at_location(new_state, i_pos):
+                    grillable = new_state.get_object(i_pos)
+                    grillable.flip()
+
 
         return sparse_reward, shaped_reward
 
@@ -1688,7 +1835,7 @@ class OvercookedGridworld(object):
             for pos0, pos1 in itertools.combinations(joint_position, 2)
         )
 
-    def step_environment_effects(self, state):
+    def step_environment_effects(self, state: OvercookedState):
         state.timestep += 1
         for obj in state.objects.values():
             if obj.name == "soup":
@@ -1700,6 +1847,9 @@ class OvercookedGridworld(object):
                 ):
                     obj.begin_cooking()
                 if obj.is_cooking:
+                    obj.cook()
+            if isinstance(obj, GrillableState):
+                if obj.is_cooking and not obj.is_ready_for_flip:
                     obj.cook()
 
     def _handle_collisions(self, old_positions, new_positions):
@@ -1906,6 +2056,27 @@ class OvercookedGridworld(object):
             and not obj.is_ready
             and len(obj.ingredients) > 0
         )
+    
+    def grillable_to_be_grilled_at_location(self, state: OvercookedState, pos):
+        if not state.has_object(pos):
+            return False
+        obj = state.get_object(pos)
+        return (
+            isinstance(obj, GrillableState)
+            and not obj.is_cooking
+            and not obj.is_ready
+            and not obj.is_ready_for_flip
+        )
+    def grillable_to_be_flipped_at_location(self, state: OvercookedState, pos):
+        if not state.has_object(pos):
+            return False
+        obj = state.get_object(pos)
+        return (
+            isinstance(obj, GrillableState)
+            and obj.is_cooking
+            and not obj.is_ready
+            and obj.is_ready_for_flip
+        )
 
     def _check_valid_state(self, state):
         """Checks that the state is valid.
@@ -2101,18 +2272,20 @@ class OvercookedGridworld(object):
             c in "XOPDST123456789 " for c in all_elements
         ), "Invalid character in grid"
         assert all_elements.count("1") == 1, "'1' must be present exactly once"
-        assert (
-            all_elements.count("D") >= 1
-        ), "'D' must be present at least once"
-        assert (
-            all_elements.count("S") >= 1
-        ), "'S' must be present at least once"
-        assert (
-            all_elements.count("P") >= 1
-        ), "'P' must be present at least once"
-        assert (
-            all_elements.count("O") >= 1 or all_elements.count("T") >= 1
-        ), "'O' or 'T' must be present at least once"
+
+        # We want new interactions in our game
+        # assert (
+        #     all_elements.count("D") >= 1
+        # ), "'D' must be present at least once"
+        # assert (
+        #     all_elements.count("S") >= 1
+        # ), "'S' must be present at least once"
+        # assert (
+        #     all_elements.count("P") >= 1
+        # ), "'P' must be present at least once"
+        # assert (
+        #     all_elements.count("O") >= 1 or all_elements.count("T") >= 1
+        # ), "'O' or 'T' must be present at least once"
 
     ################################
     # EVENT LOGGING HELPER METHODS #
