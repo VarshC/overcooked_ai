@@ -1227,12 +1227,6 @@ EVENT_TYPES = [
     "catastrophic_tomato_potting",
     "useless_onion_potting",
     "useless_tomato_potting",
-    # Grill Events
-    "beef_pickup",
-    "useful_beef_pickup",
-    "beef_drop",
-    "useful_beef_drop",
-    "grilling_beef"
 ]
 
 event_action_suffix = ['pickup', 'drop']
