@@ -14,7 +14,7 @@ from overcooked_ai_py.mdp.layout_generator import (
     SERVING_LOC,
     TOMATO_DISPENSER,
     GRILL,
-
+    CUTTING_BOARD,
 )
 from overcooked_ai_py.static import FONTS_DIR, GRAPHICS_DIR
 from overcooked_ai_py.utils import (
@@ -101,6 +101,7 @@ class StateVisualizer:
         DISH_DISPENSER: "dishes",
         SERVING_LOC: "serve",
         GRILL: "grill",
+        CUTTING_BOARD: "cutting_board"
     }
 
     def __init__(self, **kwargs):

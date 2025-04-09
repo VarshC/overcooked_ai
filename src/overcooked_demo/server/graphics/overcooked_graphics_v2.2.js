@@ -154,7 +154,8 @@ class OvercookedScene extends Phaser.Scene {
             'T': 'tomatoes.png',
             'D': 'dishes.png',
             'S': 'serve.png',
-            'G': 'grill.png'
+            'G': 'grill.png',
+            'C': 'cutting_board.png'
         };
         let pos_dict = this.terrain;
         for (let row in pos_dict) {
@@ -304,43 +305,43 @@ class OvercookedScene extends Phaser.Scene {
 
                 sprites['objects'][objpos] = objs_here
             }
-            else if ((obj.name === 'beef_raw' || obj.name === 'beef_cooked') && (terrain_type === 'G')) {
-                spriteframe = obj.is_ready ? "grill_cooked.png" : "grill_raw.png"
+            // else if ((terrain_type === 'G') && 'grillable' in obj) {
+            //     spriteframe = obj.is_ready ? "grill_cooked.png" : "grill_raw.png"
 
-                let objsprite = this.add.sprite(
-                    this.tileSize*x,
-                    this.tileSize*y,
-                    "grill_items",
-                    spriteframe
-                );
-                objsprite.setDisplaySize(this.tileSize, this.tileSize);
-                objsprite.depth = 1;
-                objsprite.setOrigin(0);
+            //     let objsprite = this.add.sprite(
+            //         this.tileSize*x,
+            //         this.tileSize*y,
+            //         "grill_items",
+            //         spriteframe
+            //     );
+            //     objsprite.setDisplaySize(this.tileSize, this.tileSize);
+            //     objsprite.depth = 1;
+            //     objsprite.setOrigin(0);
 
-                console.log(obj)
+            //     console.log(obj)
 
-                let objs_here = {objsprite};
-                let show_time = true;
-                if (obj._cooking_tick > obj.cook_time * (obj.flip_amount + 1) && !this.show_post_cook_time || obj._cooking_tick == -1) {
-                    show_time = false;
-                }
-                if (show_time) {
-                    let timesprite =  this.add.text(
-                        this.tileSize*(x+.5),
-                        this.tileSize*(y+.6),
-                        String(obj._cooking_tick),
-                        {
-                            font: "25px Arial",
-                            fill: "red",
-                            align: "center",
-                        }
-                    );
-                    timesprite.depth = 2;
-                    objs_here['timesprite'] = timesprite;
-                }
+            //     let objs_here = {objsprite};
+            //     let show_time = true;
+            //     if (obj._cooking_tick > obj.cook_time * (obj.flip_amount + 1) && !this.show_post_cook_time || obj._cooking_tick == -1) {
+            //         show_time = false;
+            //     }
+            //     if (show_time) {
+            //         let timesprite =  this.add.text(
+            //             this.tileSize*(x+.5),
+            //             this.tileSize*(y+.6),
+            //             String(obj._cooking_tick),
+            //             {
+            //                 font: "25px Arial",
+            //                 fill: "red",
+            //                 align: "center",
+            //             }
+            //         );
+            //         timesprite.depth = 2;
+            //         objs_here['timesprite'] = timesprite;
+            //     }
 
-                sprites['objects'][objpos] = objs_here
-            }
+            //     sprites['objects'][objpos] = objs_here
+            // }
             else if (obj.name === 'soup') {
                 let ingredients = obj._ingredients.map(x => x['name']);
                 let soup_status = "done";
@@ -369,6 +370,14 @@ class OvercookedScene extends Phaser.Scene {
                     spriteframe = 'beef_raw.png'
                 } else if(obj.name === 'beef_cooked') {
                     spriteframe = 'beef_cooked.png'
+                } else if(obj.name === 'tomato_whole') {
+                    spriteframe = 'tomato_whole.png'
+                } else if(obj.name === 'tomato_chopped') {
+                    spriteframe = 'tomato_chopped.png'
+                } else if(obj.name === 'cheese_whole') {
+                    spriteframe = 'cheese_whole.png'
+                } else if(obj.name === 'cheese_chopped') {
+                    spriteframe = 'cheese_chopped.png'
                 }
                 let objsprite = this.add.sprite(
                     this.tileSize*x,
@@ -379,7 +388,54 @@ class OvercookedScene extends Phaser.Scene {
                 objsprite.setDisplaySize(this.tileSize, this.tileSize);
                 objsprite.depth = 1;
                 objsprite.setOrigin(0);
-                sprites['objects'][objpos] = {objsprite};
+                
+                let objs_here  = {objsprite}
+                
+                if('grillable' in obj && terrain_type === 'G')
+                {
+                    let show_time = true;
+                    if (obj._cooking_tick >= obj.cook_time * (obj.flip_amount + 1) && !this.show_post_cook_time || obj._cooking_tick == -1) {
+                        show_time = false;
+                    }
+
+                    if (show_time) {
+                        let timesprite =  this.add.text(
+                            this.tileSize*(x+.5),
+                            this.tileSize*(y+.6),
+                            String(obj._cooking_tick),
+                            {
+                                font: "25px Arial",
+                                fill: "red",
+                                align: "center",
+                            }
+                        );
+                        timesprite.depth = 2;
+                        objs_here['timesprite'] = timesprite;
+                    }
+                }
+                if('choppable' in obj && terrain_type === 'C') {
+                    let show_time = true;
+                    if (obj._cooking_tick >= obj.cook_time && !this.show_post_cook_time || obj._cooking_tick == -1) {
+                        show_time = false;
+                    }
+
+                    if (show_time) {
+                        let timesprite =  this.add.text(
+                            this.tileSize*(x+.5),
+                            this.tileSize*(y+.6),
+                            String(obj._cooking_tick),
+                            {
+                                font: "25px Arial",
+                                fill: "red",
+                                align: "center",
+                            }
+                        );
+                        timesprite.depth = 2;
+                        objs_here['timesprite'] = timesprite;
+                    }
+                }
+
+                sprites['objects'][objpos] = objs_here;
             }
         }        
     }

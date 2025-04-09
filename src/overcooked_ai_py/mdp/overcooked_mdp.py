@@ -383,9 +383,14 @@ class Recipe:
         return cls(**obj_dict)
 
 ORIGINAL_OBJECTS = {"onion", "tomato", "dish"}
+
 GRILLABLE_OBJECTS = {"beef"}
 GRILLABLE_OBJECTS_EXPANDED = { f'{name}_{suffix}' for name in GRILLABLE_OBJECTS for suffix in ['raw', 'cooked']}
-OBJECT_NAMES = ORIGINAL_OBJECTS | GRILLABLE_OBJECTS_EXPANDED
+
+CHOPPABLE_OBJECTS = {"tomato", "cheese"}
+CHOPPABLE_OBJECTS_EXPANDED = { f'{name}_{suffix}' for name in CHOPPABLE_OBJECTS for suffix in ['whole', 'chopped']}
+
+OBJECT_NAMES = ORIGINAL_OBJECTS | GRILLABLE_OBJECTS_EXPANDED | CHOPPABLE_OBJECTS_EXPANDED
 class ObjectState(object):
     """
     State of an object in OvercookedGridworld.
@@ -828,11 +833,100 @@ class GrillableState(ObjectState):
         info_dict["cook_time"] = -1 if self.is_idle else self._cook_time
         info_dict["flip_amount"] = self._flip_amount
         info_dict["done"] = self._done
+        info_dict["grillable"] = True
 
         # This is for backwards compatibility w/ overcooked-demo
         # Should be removed once overcooked-demo is updated to use 'cooking_tick' instead of '_cooking_tick'
         info_dict["_cooking_tick"] = self._cooking_tick
         return info_dict
+
+class ChoppableState(ObjectState):
+    def __init__(
+            self, 
+            name, 
+            position, 
+            chopping_tick=-1,
+            chopping_amount=None,
+            **kwargs):
+        """
+        Represents a choppable item
+        """
+        super(ChoppableState, self).__init__(f'{name}_whole', position, **kwargs)
+        self._chopping_tick = chopping_tick
+        self._chopping_amount = chopping_amount
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, ChoppableState)
+            and self.name == other.name
+            and self.position == other.position
+            and self._chopping_tick == other._chopping_tick
+            and self._chopping_amount == self._chopping_amount
+        )
+    
+    def __hash__(self):
+        supercls_hash = super(ChoppableState, self).__hash__()
+        return hash((supercls_hash, self._chopping_tick, self._chopping_amount))
+    
+    def __repr__(self):
+        supercls_str = super(ChoppableState, self).__repr__()
+        return "{}\Chopping Tick:\t{}\nChopping Amount:\t{}".format(
+            supercls_str, self._chopping_tick, self._chopping_amount
+        )
+    def __str__(self):
+        res = "{"
+        if self.is_cooking:
+            res += str(self._chopping_tick)
+        elif self.is_ready:
+            res += str("✓")
+        return res
+    
+    @property
+    def is_ready(self):
+        if self.is_idle:
+            return False
+        return self._chopping_tick >= self._chopping_amount
+
+    @property
+    def is_idle(self):
+        return self._chopping_tick < 0
+    
+    @property
+    def is_cooking(self):
+        return not self.is_idle and not self.is_ready
+    
+    def chop(self):
+        if self.is_ready:
+            raise ValueError("Cannot chop chopped item")
+        self._chopping_tick += 1 if not self.is_idle else 2
+        if self.is_ready:
+            self.name = f'{self.name[:-6]}_chopped'
+
+    def deepcopy(self):
+        choppable = ChoppableState(
+            name=self.name,
+            position=self.position,
+            chopping_tick=self._chopping_tick,
+            chopping_amount=self._chopping_amount
+        )
+
+        choppable.name = self.name
+        return choppable
+    
+    def to_dict(self):
+        info_dict = super(ChoppableState, self).to_dict()
+        info_dict["cooking_tick"] = self._chopping_tick
+        info_dict["is_cooking"] = self.is_cooking
+        info_dict["is_ready"] = self.is_ready
+        info_dict["is_idle"] = self.is_idle
+        info_dict["cook_time"] = -1 if self.is_idle else self._chopping_amount
+        info_dict["choppable"] = True
+
+        # This is for backwards compatibility w/ overcooked-demo
+        # Should be removed once overcooked-demo is updated to use 'cooking_tick' instead of '_cooking_tick'
+        info_dict["_cooking_tick"] = self._chopping_tick
+        return info_dict
+
 
 class PlayerState(object):
     """
@@ -1232,7 +1326,7 @@ EVENT_TYPES = [
 event_action_suffix = ['pickup', 'drop']
 event_prefix = ['', 'useful_']
 EVENT_TYPES.extend(
-    [f'{prefix}{item}_{suffix}' for item in GRILLABLE_OBJECTS_EXPANDED for suffix in event_action_suffix for prefix in event_prefix]
+    [f'{prefix}{item}_{suffix}' for item in GRILLABLE_OBJECTS_EXPANDED | CHOPPABLE_OBJECTS_EXPANDED for suffix in event_action_suffix for prefix in event_prefix]
 )
 
 POTENTIAL_CONSTANTS = {
@@ -1386,7 +1480,7 @@ class OvercookedGridworld(object):
         player_positions = player_positions[:num_players]
 
         # Modify grid items that is not dispensor as items
-        ONE_INSTANCE_ITEMS = { "B" }
+        ONE_INSTANCE_ITEMS = { "B", "t" , "c" }
         starting_items = {}
         for y, row in enumerate(layout_grid):
             for x, c in enumerate(row):
@@ -1395,15 +1489,17 @@ class OvercookedGridworld(object):
         
                     if c == "B":
                         obj = GrillableState("beef", (x,y), cook_time=5, flip_amount=3)
-                    
+                    elif c == "t":
+                        obj = ChoppableState("tomato", (x,y), chopping_amount=5)
+                    elif c == "c":
+                        obj = ChoppableState("cheese", (x,y), chopping_amount=5)
+
                     starting_items[(x,y)] = obj
 
         # After removing player positions from grid we have a terrain mtx
         mdp_config["terrain"] = layout_grid
         mdp_config["start_player_positions"] = player_positions
         mdp_config["start_objects"] = starting_items
-
-        print("AAAAAAAAAAA")
 
         for k, v in params_to_overwrite.items():
             curr_val = mdp_config.get(k, None)
@@ -1815,6 +1911,31 @@ class OvercookedGridworld(object):
                         player_idx,
                     )
 
+            elif terrain_type == "C" and player.has_object():
+                if isinstance(player.get_object(), ChoppableState) and not player.get_object().is_ready:
+                    # If cutting board is empty 
+                    if not new_state.has_object(i_pos):
+                        # Place things in grill
+                        obj = player.remove_object()
+                        new_state.add_object(obj, i_pos)
+                    else:
+                        # Do nothing
+                        pass
+            elif terrain_type == "C" and not player.has_object():
+                if self.choppable_to_be_chopped_at_location(new_state, i_pos):
+                    # Chop
+                    choppable = new_state.get_object(i_pos)
+                    choppable.chop()
+                elif self.choppable_ready_at_location(new_state, i_pos):
+                    choppable = new_state.remove_object(i_pos)
+                    player.set_object(choppable)
+                    self.log_object_pickup(
+                        events_infos,
+                        new_state,
+                        choppable.name,
+                        pot_states,
+                        player_idx,
+                    )
 
         return sparse_reward, shaped_reward
 
@@ -2181,6 +2302,24 @@ class OvercookedGridworld(object):
             and obj.is_ready
         )
 
+    def choppable_to_be_chopped_at_location(self, state: OvercookedState, pos):
+        if not state.has_object(pos):
+            return False
+        obj = state.get_object(pos)
+        return (
+            isinstance(obj, ChoppableState)
+            and not obj.is_ready
+        )
+
+    def choppable_ready_at_location(self, state: OvercookedState, pos):
+        if not state.has_object(pos):
+            return False
+        obj = state.get_object(pos)
+        return (
+            isinstance(obj, ChoppableState)
+            and obj.is_ready
+        )
+
     def _check_valid_state(self, state):
         """Checks that the state is valid.
 
@@ -2352,7 +2491,10 @@ class OvercookedGridworld(object):
             "D": "dish supply",
             "S": "serving location",
             "B": "beef item",
-            "G": "grill"
+            "G": "grill",
+            "t": "tomato item",
+            "C": "cutting board",
+            "c": "cheese item"
             }
         
         ALL_BLOCKS = {
