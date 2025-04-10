@@ -440,6 +440,8 @@ class OvercookedGame(Game):
             "LEFT": Direction.WEST,
             "RIGHT": Direction.EAST,
             "SPACE": Action.INTERACT,
+            "HAPPY": Action.EMOTE_HAPPY,
+            "UNHAPPY": Action.EMOTE_UNHAPPY,
         }
         self.ticks_per_ai_action = ticks_per_ai_action
         self.curr_tick = 0

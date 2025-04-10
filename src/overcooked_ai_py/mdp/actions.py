@@ -46,9 +46,13 @@ class Action(object):
 
     STAY = (0, 0)
     INTERACT = "interact"
+    EMOTE_HAPPY = "happy"
+    EMOTE_UNHAPPY = "unhappy"
     ALL_ACTIONS = INDEX_TO_ACTION = Direction.INDEX_TO_DIRECTION + [
         STAY,
         INTERACT,
+        EMOTE_HAPPY,
+        EMOTE_UNHAPPY
     ]
     INDEX_TO_ACTION_INDEX_PAIRS = [
         v for v in itertools.product(range(len(INDEX_TO_ACTION)), repeat=2)
@@ -62,6 +66,8 @@ class Action(object):
         Direction.WEST: "←",
         STAY: "stay",
         INTERACT: INTERACT,
+        EMOTE_HAPPY: EMOTE_HAPPY,
+        EMOTE_UNHAPPY: EMOTE_UNHAPPY
     }
     NUM_ACTIONS = len(ALL_ACTIONS)
 

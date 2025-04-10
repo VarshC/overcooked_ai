@@ -176,6 +176,14 @@ function enable_key_listener() {
                 action = 'SPACE';
                 break;
 
+            case 90: // z
+                action = 'HAPPY'
+                break;
+
+            case 88: // x
+                action =  'UNHAPPY';
+                break
+
             default: // exit this handler for other keys
                 return; 
         }

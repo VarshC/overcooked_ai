@@ -1051,11 +1051,14 @@ class PlayerState(object):
     held_object: ObjectState representing the object held by the player, or
                  None if there is no such object.
     """
+    EMOTE_COOLDOWN = 5 # 5 frames
 
-    def __init__(self, position, orientation, held_object=None):
+    def __init__(self, position, orientation, held_object=None, emote=None, emote_tick=0):
         self.position = tuple(position)
         self.orientation = tuple(orientation)
         self.held_object = held_object
+        self.emote = emote
+        self.emote_tick = emote_tick
 
         assert self.orientation in Direction.ALL_DIRECTIONS
         if self.held_object is not None:
@@ -1083,6 +1086,26 @@ class PlayerState(object):
         obj = self.held_object
         self.held_object = None
         return obj
+    
+    @property
+    def can_emote(self):
+        """Can emote after cooldown"""
+        return self.emote_tick <= 0
+
+    def set_emote(self, emote):
+        if emote is not None and not self.can_emote:
+            raise ValueError("Can't emote during cooldown")
+        self.emote = emote
+
+        if emote is not None:
+            self.emote_tick = self.EMOTE_COOLDOWN
+
+    def tick_emote(self):
+        if not self.can_emote:
+            self.emote_tick -= 1
+
+        if self.can_emote:
+            self.emote = None
 
     def update_pos_and_or(self, new_position, new_orientation):
         self.position = new_position
@@ -1094,7 +1117,7 @@ class PlayerState(object):
         new_obj = (
             None if self.held_object is None else self.held_object.deepcopy()
         )
-        return PlayerState(self.position, self.orientation, new_obj)
+        return PlayerState(self.position, self.orientation, new_obj, self.emote, self.emote_tick)
 
     def __eq__(self, other):
         return (
@@ -1102,14 +1125,16 @@ class PlayerState(object):
             and self.position == other.position
             and self.orientation == other.orientation
             and self.held_object == other.held_object
+            and self.emote == other.emote
+            and self.emote_tick == other.emote_tick
         )
 
     def __hash__(self):
-        return hash((self.position, self.orientation, self.held_object))
+        return hash((self.position, self.orientation, self.held_object, self.emote, self.emote_tick))
 
     def __repr__(self):
-        return "{} facing {} holding {}".format(
-            self.position, self.orientation, str(self.held_object)
+        return "{} facing {} holding {} emote {} emote cooldown {}".format(
+            self.position, self.orientation, str(self.held_object), self.emote, self.emote_tick
         )
 
     def to_dict(self):
@@ -1119,6 +1144,9 @@ class PlayerState(object):
             "held_object": self.held_object.to_dict()
             if self.held_object is not None
             else None,
+            "emote": self.emote,
+            "emote_tick": self.emote_tick,
+            "just_emoted": self.emote_tick >= self.EMOTE_COOLDOWN - 1 # always tick after to be valid so need to -1
         }
 
     @staticmethod
@@ -1824,6 +1852,9 @@ class OvercookedGridworld(object):
         # Resolve player movements
         self.resolve_movement(new_state, joint_action)
 
+        # Resolve player emote
+        self.resolve_emote(new_state, joint_action)
+
         # Finally, environment effects
         self.step_environment_effects(new_state)
 
@@ -2147,6 +2178,15 @@ class OvercookedGridworld(object):
             state.players, new_positions, new_orientations
         ):
             player_state.update_pos_and_or(new_pos, new_o)
+
+    def resolve_emote(self, state: OvercookedState, joint_action):
+        for player_state, action in zip(state.players, joint_action):
+            if action == Action.EMOTE_HAPPY and player_state.can_emote:
+                player_state.set_emote(Action.EMOTE_HAPPY)
+            elif action == Action.EMOTE_UNHAPPY and player_state.can_emote:
+                player_state.set_emote(Action.EMOTE_UNHAPPY)
+
+            player_state.tick_emote()
 
     def compute_new_positions_and_orientations(
         self, old_player_states, joint_action

@@ -409,6 +409,12 @@ class StateVisualizer:
                 self._position_in_unscaled_pixels(player.position),
                 hat_frame_name(direction_name, player_color_name),
             )
+            if player.emote is not None:
+                self.CHEFS_IMG.blit_on_surface(
+                    surface,
+                    self._position_in_unscaled_pixels(player.position),
+                    player.emote,
+                )
 
     @staticmethod
     def _soup_frame_name(ingredients_names, status):

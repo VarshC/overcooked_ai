@@ -1519,6 +1519,47 @@
 				"w": 15,
 				"h": 15
 			}
+		},
+		"happy.png": {
+			"frame": {
+				"x": 86,
+				"y": 154,
+				"w": 15,
+				"h": 15
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 15,
+				"h": 15
+			},
+			"sourceSize": {
+				"w": 15,
+				"h": 15
+			}
+		}
+		,
+		"unhappy.png": {
+			"frame": {
+				"x": 103,
+				"y": 154,
+				"w": 15,
+				"h": 15
+			},
+			"rotated": false,
+			"trimmed": false,
+			"spriteSourceSize": {
+				"x": 0,
+				"y": 0,
+				"w": 15,
+				"h": 15
+			},
+			"sourceSize": {
+				"w": 15,
+				"h": 15
+			}
 		}
 	},
 	"meta": {

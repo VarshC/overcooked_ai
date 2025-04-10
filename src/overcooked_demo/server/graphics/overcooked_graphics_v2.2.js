@@ -221,15 +221,34 @@ class OvercookedScene extends Phaser.Scene {
                 hatsprite.setDisplaySize(this.tileSize, this.tileSize);
                 hatsprite.depth = 2;
                 hatsprite.setOrigin(0);
-                sprites['chefs'][pi] = {chefsprite, hatsprite};
+
+                let emotesprite = this.add.sprite(
+                    this.tileSize*x,
+                    this.tileSize*y,
+                    "chefs",
+                    "happy.png" // default
+                );
+                emotesprite.setDisplaySize(this.tileSize, this.tileSize);
+                emotesprite.depth = 2;
+                emotesprite.setOrigin(0);
+                emotesprite.setAlpha(0);
+                
+                sprites['chefs'][pi] = {chefsprite, hatsprite, emotesprite};
             }
             else {
                 let chefsprite = sprites['chefs'][pi]['chefsprite'];
                 let hatsprite = sprites['chefs'][pi]['hatsprite'];
+                let emotesprite = sprites['chefs'][pi]['emotesprite'];
                 chefsprite.setFrame(`${dir}${held_obj}.png`);
                 hatsprite.setFrame(`${dir}-${this.player_colors[pi]}hat.png`);
+                if(chef.emote === null) {
+                    emotesprite.setAlpha(0);
+                } else {
+                    emotesprite.setFrame(chef.emote + ".png");
+                    emotesprite.setAlpha(1);
+                }
                 this.tweens.add({
-                    targets: [chefsprite, hatsprite],
+                    targets: [chefsprite, hatsprite, emotesprite],
                     x: this.tileSize*x,
                     y: this.tileSize*y,
                     duration: this.animation_duration,
@@ -332,12 +351,10 @@ class OvercookedScene extends Phaser.Scene {
                     "dish.png"
                 )]
 
-                console.log(obj + "Current ingredients" + ingredients)
                 RENDER_ORDER_PARTIAL.forEach((render_object, index) => {
                     if (ingredients.includes(render_object)) {
                         let ingredient_sprite = this.add.sprite(0, 0, "objects", render_object + ".png");
                         burger_sprites.push(ingredient_sprite);
-                        console.log("Adding " + render_object + " to render")
                     }
                 });
 
@@ -354,10 +371,6 @@ class OvercookedScene extends Phaser.Scene {
                 });
                 objsprite.sort('depth')
 
-                // console.log(objsprite)
-                // objsprite.setSize(this.tileSize, this.tileSize);
-                // objsprite.depth = 1;
-                // objsprite.setOrigin(0,0);
                 sprites['objects'][objpos] = {objsprite};
             }
             else {
