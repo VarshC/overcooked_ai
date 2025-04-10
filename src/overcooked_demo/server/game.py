@@ -478,7 +478,7 @@ class OvercookedGame(Game):
         self.trajectory = []
 
     def _curr_game_over(self):
-        return time() - self.start_time >= self.max_time
+        return time() - self.start_time >= self.max_time or self.mdp.is_terminal(self.state)
 
     def needs_reset(self):
         return self._curr_game_over() and not self.is_finished()

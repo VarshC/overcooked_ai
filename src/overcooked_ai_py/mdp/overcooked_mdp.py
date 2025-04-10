@@ -384,13 +384,15 @@ class Recipe:
 
 ORIGINAL_OBJECTS = {"onion", "tomato", "dish"}
 
+NEW_OBJECTS = {"bun", "burger"}
+
 GRILLABLE_OBJECTS = {"beef"}
 GRILLABLE_OBJECTS_EXPANDED = { f'{name}_{suffix}' for name in GRILLABLE_OBJECTS for suffix in ['raw', 'cooked']}
 
 CHOPPABLE_OBJECTS = {"tomato", "cheese"}
 CHOPPABLE_OBJECTS_EXPANDED = { f'{name}_{suffix}' for name in CHOPPABLE_OBJECTS for suffix in ['whole', 'chopped']}
 
-OBJECT_NAMES = ORIGINAL_OBJECTS | GRILLABLE_OBJECTS_EXPANDED | CHOPPABLE_OBJECTS_EXPANDED
+OBJECT_NAMES = ORIGINAL_OBJECTS | GRILLABLE_OBJECTS_EXPANDED | CHOPPABLE_OBJECTS_EXPANDED | NEW_OBJECTS
 class ObjectState(object):
     """
     State of an object in OvercookedGridworld.
@@ -840,6 +842,7 @@ class GrillableState(ObjectState):
         info_dict["_cooking_tick"] = self._cooking_tick
         return info_dict
 
+
 class ChoppableState(ObjectState):
     def __init__(
             self, 
@@ -925,6 +928,117 @@ class ChoppableState(ObjectState):
         # This is for backwards compatibility w/ overcooked-demo
         # Should be removed once overcooked-demo is updated to use 'cooking_tick' instead of '_cooking_tick'
         info_dict["_cooking_tick"] = self._chopping_tick
+        return info_dict
+
+
+class BurgerState(ObjectState):
+    RECIPE_INGREDIENTS = {"tomato_chopped", "cheese_chopped", "bun", "beef_cooked"}
+    INGREDIENT_STR = {
+        "tomato_chopped": "†",
+        "cheese_chopped":  "□",
+        "bun": "⊖",
+        "beef_cooked": "◯"
+    }
+
+    def __init__(
+            self, 
+            position, 
+            ingredients = [],
+            **kwargs
+    ):
+        """
+        Represents a burger state
+        """
+        super(BurgerState, self).__init__("burger", position, **kwargs)
+
+        self._ingredients = ingredients
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, BurgerState)
+            and self.name == other.name
+            and self.position == other.position
+            and all(self_ingredient == other_ingredient for self_ingredient, other_ingredient in zip(self._ingredients, other._ingredients))
+        )
+    
+    def __hash__(self):
+        ingredient_hash = hash(tuple([hash(i) for i in self._ingredients]))
+        supercls_hash = super(BurgerState, self).__hash__()
+        return hash((supercls_hash, ingredient_hash))
+    
+    def __repr__(self):
+        supercls_str = super(BurgerState, self).__repr__()
+        ingredients_str = self._ingredients.__repr__()
+        return "{}\nIngredients:\t{}".format(
+            supercls_str, ingredients_str
+        )
+    
+    def __str__(self):
+        res = "{"
+        for ingredient in sorted(self.ingredients):
+            res += self.INGREDIENT_STR[ingredient]
+        if self.is_ready:
+            res += str("✓")
+        return res
+    
+    @ObjectState.position.setter
+    def position(self, new_pos):
+        self._position = new_pos
+        for ingredient in self._ingredients:
+            ingredient.position = new_pos
+
+    @property
+    def is_ready(self):
+        return set([ ingredient.name for ingredient in self._ingredients ]) == self.RECIPE_INGREDIENTS
+    
+    def is_valid(self):
+        import logging
+        logging.debug(f'{self._ingredients=}')
+        if not all(
+            [
+                ingredient.position == self.position
+                for ingredient in self._ingredients
+            ]
+        ):
+            return False
+        if any(
+            [
+                ingredient.name not in self.RECIPE_INGREDIENTS
+                for ingredient in self._ingredients
+            ]
+        ):
+            return False
+        return True
+    
+    def is_burger_ingredient(self, ingredient):
+        return ingredient.name in self.RECIPE_INGREDIENTS and ingredient.name not in self._ingredients
+
+    def add_ingredients(self, ingredient):
+        if not self.is_burger_ingredient(ingredient):
+            raise ValueError("Invalid ingredient for burger")
+        if self.is_ready:
+            raise ValueError("Can't add to finished burger")
+        ingredient.position = self.position
+        self._ingredients.append(ingredient)
+
+    def deepcopy(self):
+        new_burger = BurgerState(
+            self.position,
+            ingredients=[ingredient.deepcopy() for ingredient in self._ingredients],
+        )
+
+        return new_burger
+    
+    def to_dict(self):
+        info_dict = super(BurgerState, self).to_dict()
+        ingrdients_dict = [
+            ingredient.to_dict() for ingredient in self._ingredients
+        ]
+
+        info_dict["_ingredients"] = ingrdients_dict
+        info_dict["is_ready"] = self.is_ready
+        info_dict["burger"] = True
+
         return info_dict
 
 
@@ -1026,6 +1140,7 @@ class OvercookedState(object):
         bonus_orders=[],
         all_orders=[],
         timestep=0,
+        is_done=False,
         **kwargs
     ):
         """
@@ -1047,6 +1162,7 @@ class OvercookedState(object):
         self._bonus_orders = bonus_orders
         self._all_orders = all_orders
         self.timestep = timestep
+        self.is_done = is_done
 
         assert len(set(self.bonus_orders)) == len(
             self.bonus_orders
@@ -1222,6 +1338,7 @@ class OvercookedState(object):
             bonus_orders=[order.to_dict() for order in self.bonus_orders],
             all_orders=[order.to_dict() for order in self.all_orders],
             timestep=self.timestep,
+            is_done=self.is_done
         )
 
     def time_independent_equal(self, other):
@@ -1268,6 +1385,7 @@ class OvercookedState(object):
             "bonus_orders": [order.to_dict() for order in self.bonus_orders],
             "all_orders": [order.to_dict() for order in self.all_orders],
             "timestep": self.timestep,
+            "is_done": self.is_done
         }
 
     @staticmethod
@@ -1326,7 +1444,7 @@ EVENT_TYPES = [
 event_action_suffix = ['pickup', 'drop']
 event_prefix = ['', 'useful_']
 EVENT_TYPES.extend(
-    [f'{prefix}{item}_{suffix}' for item in GRILLABLE_OBJECTS_EXPANDED | CHOPPABLE_OBJECTS_EXPANDED for suffix in event_action_suffix for prefix in event_prefix]
+    [f'{prefix}{item}_{suffix}' for item in NEW_OBJECTS | GRILLABLE_OBJECTS_EXPANDED | CHOPPABLE_OBJECTS_EXPANDED for suffix in event_action_suffix for prefix in event_prefix]
 )
 
 POTENTIAL_CONSTANTS = {
@@ -1480,7 +1598,7 @@ class OvercookedGridworld(object):
         player_positions = player_positions[:num_players]
 
         # Modify grid items that is not dispensor as items
-        ONE_INSTANCE_ITEMS = { "B", "t" , "c" }
+        ONE_INSTANCE_ITEMS = { "B", "t" , "c", "b", "d" }
         starting_items = {}
         for y, row in enumerate(layout_grid):
             for x, c in enumerate(row):
@@ -1493,6 +1611,10 @@ class OvercookedGridworld(object):
                         obj = ChoppableState("tomato", (x,y), chopping_amount=5)
                     elif c == "c":
                         obj = ChoppableState("cheese", (x,y), chopping_amount=5)
+                    elif c == "b":
+                        obj = ObjectState("bun", (x,y))
+                    elif c == "d":
+                        obj = BurgerState((x,y))
 
                     starting_items[(x,y)] = obj
 
@@ -1663,7 +1785,7 @@ class OvercookedGridworld(object):
 
     def is_terminal(self, state):
         # There is a finite horizon, handled by the environment.
-        return False
+        return state.is_done
 
     def get_state_transition(
         self, state, joint_action, display_phi=False, motion_planner=None
@@ -1777,6 +1899,18 @@ class OvercookedGridworld(object):
                     obj = new_state.remove_object(i_pos)
                     player.set_object(obj)
 
+                elif player.has_object() and new_state.has_object(i_pos):
+                    # Player dropping off burger item to be assembled
+                    target_object = new_state.get_object(i_pos)
+
+                    if isinstance(target_object, BurgerState):
+                        if target_object.is_burger_ingredient(player.get_object()):
+                            # Add Ingredient to burger
+                            target_object.add_ingredients(player.remove_object())
+                        else:
+                            # Do nothing
+                            pass
+
             elif terrain_type == "O" and player.held_object is None:
                 self.log_object_pickup(
                     events_infos, new_state, "onion", pot_states, player_idx
@@ -1805,16 +1939,6 @@ class OvercookedGridworld(object):
                 obj = ObjectState("dish", pos)
                 player.set_object(obj)
 
-            # Not beef dispensor
-            # elif terrain_type == "B" and player.help_object is None:
-            #     self.log_object_pickup(
-            #         events_infos, new_state, "beef", pot_states, player_idx
-            #     )
-                
-            #     # Pick up beef
-            #     # Remove beef from counter (since its not dispenser)
-            #     obj = new_state.remove_object(i_pos)
-            #     player.set_object(obj)
             elif terrain_type == "P" and not player.has_object():
                 # An interact action will only start cooking the soup if we are using the new dynamics
                 if (
@@ -1878,6 +2002,15 @@ class OvercookedGridworld(object):
 
                     # Log soup delivery
                     events_infos["soup_delivery"][player_idx] = True
+                elif isinstance(obj, BurgerState):
+                    if obj.is_ready:
+                        # Can only serve full burger
+                        player.remove_object()
+                        new_state.is_done = True
+                        delivery_rew = 10
+                        sparse_reward[player_idx] += delivery_rew
+                    else:
+                        raise ValueError(f'{obj._ingredients=}')
 
             elif terrain_type == "G" and player.has_object():
 
@@ -2494,7 +2627,9 @@ class OvercookedGridworld(object):
             "G": "grill",
             "t": "tomato item",
             "C": "cutting board",
-            "c": "cheese item"
+            "c": "cheese item",
+            "b": "bun item",
+            "d": "dish item"
             }
         
         ALL_BLOCKS = {

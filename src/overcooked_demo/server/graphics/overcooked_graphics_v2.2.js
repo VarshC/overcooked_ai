@@ -305,43 +305,6 @@ class OvercookedScene extends Phaser.Scene {
 
                 sprites['objects'][objpos] = objs_here
             }
-            // else if ((terrain_type === 'G') && 'grillable' in obj) {
-            //     spriteframe = obj.is_ready ? "grill_cooked.png" : "grill_raw.png"
-
-            //     let objsprite = this.add.sprite(
-            //         this.tileSize*x,
-            //         this.tileSize*y,
-            //         "grill_items",
-            //         spriteframe
-            //     );
-            //     objsprite.setDisplaySize(this.tileSize, this.tileSize);
-            //     objsprite.depth = 1;
-            //     objsprite.setOrigin(0);
-
-            //     console.log(obj)
-
-            //     let objs_here = {objsprite};
-            //     let show_time = true;
-            //     if (obj._cooking_tick > obj.cook_time * (obj.flip_amount + 1) && !this.show_post_cook_time || obj._cooking_tick == -1) {
-            //         show_time = false;
-            //     }
-            //     if (show_time) {
-            //         let timesprite =  this.add.text(
-            //             this.tileSize*(x+.5),
-            //             this.tileSize*(y+.6),
-            //             String(obj._cooking_tick),
-            //             {
-            //                 font: "25px Arial",
-            //                 fill: "red",
-            //                 align: "center",
-            //             }
-            //         );
-            //         timesprite.depth = 2;
-            //         objs_here['timesprite'] = timesprite;
-            //     }
-
-            //     sprites['objects'][objpos] = objs_here
-            // }
             else if (obj.name === 'soup') {
                 let ingredients = obj._ingredients.map(x => x['name']);
                 let soup_status = "done";
@@ -355,6 +318,46 @@ class OvercookedScene extends Phaser.Scene {
                 objsprite.setDisplaySize(this.tileSize, this.tileSize);
                 objsprite.depth = 1;
                 objsprite.setOrigin(0);
+                sprites['objects'][objpos] = {objsprite};
+            }
+            else if ('burger' in obj) {
+                let ingredients = obj._ingredients.map(x => x['name']); 
+                let RENDER_ORDER_PARTIAL = ["bun", "beef_cooked", "tomato_chopped", "cheese_chopped"]
+                let objsprite = this.add.container(this.tileSize*x, this.tileSize*y)
+                
+                let burger_sprites = [this.add.sprite(
+                    0,
+                    0,
+                    "objects",
+                    "dish.png"
+                )]
+
+                console.log(obj + "Current ingredients" + ingredients)
+                RENDER_ORDER_PARTIAL.forEach((render_object, index) => {
+                    if (ingredients.includes(render_object)) {
+                        let ingredient_sprite = this.add.sprite(0, 0, "objects", render_object + ".png");
+                        burger_sprites.push(ingredient_sprite);
+                        console.log("Adding " + render_object + " to render")
+                    }
+                });
+
+                if(obj.is_ready) {
+                    burger_sprites.push(this.add.sprite(0, 0, "objects", "bun.png"));
+                }
+                
+                // burger_sprites.reverse()
+                burger_sprites.forEach((ingredient_sprite, index) => {
+                    ingredient_sprite.setDisplaySize(this.tileSize, this.tileSize);
+                    ingredient_sprite.setDepth(1 + index);
+                    ingredient_sprite.setOrigin(0);
+                    objsprite.add(ingredient_sprite);
+                });
+                objsprite.sort('depth')
+
+                // console.log(objsprite)
+                // objsprite.setSize(this.tileSize, this.tileSize);
+                // objsprite.depth = 1;
+                // objsprite.setOrigin(0,0);
                 sprites['objects'][objpos] = {objsprite};
             }
             else {
@@ -378,6 +381,8 @@ class OvercookedScene extends Phaser.Scene {
                     spriteframe = 'cheese_whole.png'
                 } else if(obj.name === 'cheese_chopped') {
                     spriteframe = 'cheese_chopped.png'
+                } else if(obj.name === 'bun') {
+                    spriteframe = 'bun.png'
                 }
                 let objsprite = this.add.sprite(
                     this.tileSize*x,

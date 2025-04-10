@@ -440,29 +440,38 @@ class StateVisualizer:
                 self._position_in_unscaled_pixels(obj.position),
                 frame_name,
             )
-        # def render_beef(surface, object, grid):
-        #     (x_pos, y_pos) = obj.position
-        #     if grid[y_pos][x_pos] == GRILL:
-        #         if obj.is_ready:
-        #             frame_name = "grill_cooked"
-        #         else:
-        #             frame_name = "grill_raw"
-        #     else:
-        #         if obj.is_done:
-        #             frame_name = "beef_cooked"
-        #         else:
-        #             frame_name = "beef_raw"
-        #     self.OBJECTS_IMG.blit_on_surface(
-        #         surface,
-        #         self._position_in_unscaled_pixels(obj.position),
-        #         frame_name,
-        #     )
+        def render_burger(surface, object, grid):
+            self.OBJECTS_IMG.blit_on_surface(
+                surface,
+                self._position_in_unscaled_pixels(obj.position),
+                "dish",
+            )
+
+            current_ingredients = set([ ingredient.name for ingredient in obj._ingredients ])
+
+            RENDER_ORDER_PARTIAL = ["bun", "beef_cooked", "tomato_chopped", "cheese_chopped"]
+
+            for render_object in RENDER_ORDER_PARTIAL:
+                if render_object in current_ingredients:
+                    self.OBJECTS_IMG.blit_on_surface(
+                        surface,
+                        self._position_in_unscaled_pixels(obj.position),
+                        render_object
+                    )
+
+            if obj.is_ready:
+                # Render bun on top
+                self.OBJECTS_IMG.blit_on_surface(
+                    surface,
+                    self._position_in_unscaled_pixels(obj.position),
+                    "bun"
+                )
 
         for obj in objects.values():
             if obj.name == "soup":
                 render_soup(surface, obj, grid)
-            # elif obj.name == "beef":
-            #     render_beef(surface, obj, grid)
+            if obj.name == "burger":
+                render_burger(surface, obj, grid)
             else:
                 self.OBJECTS_IMG.blit_on_surface(
                     surface,
@@ -496,7 +505,7 @@ class StateVisualizer:
                     surface.blit(text_surface, font_position)
             if grid[y_pos][x_pos] == GRILL: # All grillable objects
                 if obj._cooking_tick != -1 and (
-                    obj._cooking_tick <= obj._cook_time or self.show_timer_when_cooked
+                    obj._cooking_tick < obj._cook_time or self.show_timer_when_cooked
                 ):
                     text_surface = self.cooking_timer_font.render(
                         str(obj._cooking_tick),
@@ -529,6 +538,27 @@ class StateVisualizer:
                         + int((self.tile_size - text_surface.get_height()) * 0.1),
                     )
                     surface.blit(flip_count, font_position)
+            if grid[y_pos][x_pos] == CUTTING_BOARD: # All choppable objects
+                if obj._chopping_tick != -1 and (
+                    obj._chopping_tick < obj._chopping_amount or self.show_timer_when_cooked
+                ):
+                    text_surface = self.cooking_timer_font.render(
+                        str(obj._chopping_tick),
+                        True,
+                        self.cooking_timer_font_color,
+                    )
+                    (tile_pos_x, tile_pos_y) = self._position_in_scaled_pixels(
+                        obj.position
+                    )
+
+                    # calculate font position to be in center on x axis, and 0.9 from top on y axis
+                    font_position = (
+                        tile_pos_x
+                        + int((self.tile_size - text_surface.get_width()) * 0.5),
+                        tile_pos_y
+                        + int((self.tile_size - text_surface.get_height()) * 0.9),
+                    )
+                    surface.blit(text_surface, font_position)
 
     def _sorted_hud_items(self, hud_data):
         def default_order_then_alphabetic(item):
