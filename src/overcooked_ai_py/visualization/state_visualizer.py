@@ -359,7 +359,7 @@ class StateVisualizer:
                     
                     StateVisualizer.TILE_TO_FRAME_NAME[tile],
                 )
-                print("tile: ", tile)
+                #print("tile: ", tile)
 
     def _position_in_unscaled_pixels(self, position):
         """
@@ -476,9 +476,10 @@ class StateVisualizer:
                 )
 
         for obj in objects.values():
+            print("obj name: ", obj.name)
             if obj.name == "soup":
                 render_soup(surface, obj, grid)
-            if obj.name == "burger":
+            elif obj.name == "burger":
                 render_burger(surface, obj, grid)
             else:
                 self.OBJECTS_IMG.blit_on_surface(
