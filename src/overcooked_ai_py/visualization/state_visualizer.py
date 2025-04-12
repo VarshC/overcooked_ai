@@ -356,8 +356,10 @@ class StateVisualizer:
                 self.TERRAINS_IMG.blit_on_surface(
                     surface,
                     self._position_in_unscaled_pixels((x_tile, y_tile)),
+                    
                     StateVisualizer.TILE_TO_FRAME_NAME[tile],
                 )
+                print("tile: ", tile)
 
     def _position_in_unscaled_pixels(self, position):
         """

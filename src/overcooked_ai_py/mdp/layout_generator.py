@@ -25,6 +25,8 @@ CODE_TO_TYPE = {
     4: POT,
     5: DISH_DISPENSER,
     6: SERVING_LOC,
+    7: CUTTING_BOARD,
+    8: GRILL,
 }
 TYPE_TO_CODE = {v: k for k, v in CODE_TO_TYPE.items()}
 

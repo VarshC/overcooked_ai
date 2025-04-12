@@ -2338,6 +2338,21 @@ class OvercookedGridworld(object):
 
     def get_counter_locations(self):
         return list(self.terrain_pos_dict["X"])
+    
+    def get_beef_locations(self):
+        return list(self.terrain_pos_dict["B"]) #Capital B = beef, lower b = bun, Capital C = cuttingboard, lower c = cheese
+    
+    def get_cuttingboard_locations(self):
+        return list(self.terrain_pos_dict["C"])
+    
+    def get_cheese_locations(self):
+        return list(self.terrain_pos_dict["c"])
+    
+    def get_grill_locations(self):
+        return list(self.terrain_pos_dict["G"])
+    
+    def get_bun_locations(self):
+        return list(self.terrain_pos_dict["b"])
 
     @property
     def num_pots(self):
@@ -2394,6 +2409,14 @@ class OvercookedGridworld(object):
     def get_empty_pots(self, pot_states):
         """Returns pots that have 0 items in them"""
         return pot_states["empty"]
+    
+    def get_empty_cutting_boards(self, state):
+        cutting_board_positions = self.terrain_pos_dict["cutting_board"]
+        return [pos for pos in cutting_board_positions if not state.has_object(pos)]
+    
+    def get_empty_grills(self, state):
+        grill_positions = self.terrain_pos_dict["grill"]
+        return [pos for pos in grill_positions if not state.has_object(pos)]
 
     def get_non_empty_pots(self, pot_states):
         return self.get_full_pots(pot_states) + self.get_partially_full_pots(
@@ -3070,8 +3093,21 @@ class OvercookedGridworld(object):
             for loc in self.get_dish_dispenser_locations():
                 state_mask_dict["dish_disp_loc"][loc] = 1
 
-            for loc in self.get_serving_locations():
-                state_mask_dict["serve_loc"][loc] = 1
+
+            for loc in self.get_beef_locations():
+                state_mask_dict["beef_disp_loc"][loc] = 1
+
+            for loc in self.get_cuttingboard_locations():
+                state_mask_dict["cuttingboard_loc"][loc] = 1
+
+            for loc in self.get_grill_locations():
+                state_mask_dict["grill_loc"][loc] = 1
+
+            for loc in self.get_bun_locations():
+                state_mask_dict["bun_loc"][loc] = 1
+
+            for loc in self.get_cheese_locations():
+                state_mask_dict["cheese_loc"][loc] = 1
 
             # PLAYER LAYERS
             for i, player in enumerate(overcooked_state.players):
@@ -3253,14 +3289,26 @@ class OvercookedGridworld(object):
                 num_onions = num_tomatoes = 0
                 if obj:
                     ingredients_cnt = Counter(obj.ingredients)
-                    num_onions, num_tomatoes = (
+                    num_onions, num_tomatoes = (  
                         ingredients_cnt["onion"],
                         ingredients_cnt["tomato"],
                     )
                 feat_dict["p{}_closest_soup_n_onions".format(i)] = [num_onions]
                 feat_dict["p{}_closest_soup_n_tomatoes".format(i)] = [
-                    num_tomatoes
+                    num_tomatoes 
                 ]
+            if name == "burger" and isinstance(obj, BurgerState):
+                n_ingredients = len(obj._ingredients)
+                feat_dict[f"p{idx}_closest_burger_n_ingredients"] = [n_ingredients]
+                feat_dict[f"p{idx}_closest_burger_is_ready"] = [int(obj.is_ready)]
+            
+            if isinstance(obj, GrillableState):
+                feat_dict[f"p{idx}_closest_beef_ready_for_flip"] = [int(obj.is_ready_for_flip)]
+                feat_dict[f"p{idx}_closest_beef_is_ready"] = [int(obj.is_ready)]
+
+       
+            if name in ["cheese", "tomato"] and isinstance(obj, ChoppableState):
+                feat_dict[f"p{idx}_closest_{name}_is_ready"] = [int(obj.is_ready)]
 
             return feat_dict
 
@@ -3424,6 +3472,40 @@ class OvercookedGridworld(object):
                     self.get_empty_counter_locations(overcooked_state),
                 ),
             )
+            # Closest empty cutting board
+            empty_cbs = self.get_empty_cutting_boards(overcooked_state)
+            all_features = concat_dicts(
+                all_features,
+                make_closest_feature(i, player, "empty_cutting_board", empty_cbs),
+            )
+
+            # Closest empty grill
+            empty_grills = self.get_empty_grills(overcooked_state)
+            all_features = concat_dicts(
+                all_features,
+                make_closest_feature(i, player, "empty_grill", empty_grills),
+            )
+
+
+                #NEW CODE: ADD SUPPORT FOR GRILLED & CUT OBJECTS & NEW FOOD ITEMS
+
+                
+            counter_objects = self.get_counter_objects_dict(overcooked_state)
+            for ingredient in [
+                "cheese", "cheese_chopped", 
+                "tomato_chopped", 
+                "beef", "beef_cooked"
+            ]:
+                all_features = concat_dicts(
+                    all_features,
+                    make_closest_feature(
+                        i,
+                        player,
+                        ingredient,
+                        counter_objects.get(ingredient, []),
+                    ),
+                )
+
 
             # Closest pots info
             pot_locations = self.get_pot_locations().copy()
