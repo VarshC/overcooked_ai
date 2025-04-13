@@ -476,7 +476,7 @@ class StateVisualizer:
                 )
 
         for obj in objects.values():
-            print("obj name: ", obj.name)
+            #print("obj name: ", obj.name)
             if obj.name == "soup":
                 render_soup(surface, obj, grid)
             elif obj.name == "burger":

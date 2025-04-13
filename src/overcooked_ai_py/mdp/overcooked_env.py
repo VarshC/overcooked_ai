@@ -449,6 +449,15 @@ class OvercookedEnv(object):
         while not done:
             s_t = self.state
 
+
+            # Agent-centric feature printout for debugging
+            obs = self.featurize_state_mdp(s_t)  # returns (obs0, obs1)
+
+            # print(f"\nTimestep {self.state.timestep}")
+            # print("Agent 0 features:", obs[0])
+            # print("Agent 1 features:", obs[1])
+
+
             # Getting actions and action infos (optional) for both agents
             joint_action_and_infos = agent_pair.joint_action(s_t)
             a_t, a_info_t = zip(*joint_action_and_infos)

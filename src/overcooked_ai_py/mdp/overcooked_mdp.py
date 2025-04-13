@@ -5,6 +5,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from typing import Tuple
 from functools import reduce
+import pprint
 
 import numpy as np
 
@@ -1107,6 +1108,12 @@ class PlayerState(object):
         if self.can_emote:
             self.emote = None
 
+    @property
+    def just_emoted(self):
+        """True if player just started emoting in the previous tick"""
+        return self.emote_tick >= self.EMOTE_COOLDOWN - 1
+
+
     def update_pos_and_or(self, new_position, new_orientation):
         self.position = new_position
         self.orientation = new_orientation
@@ -1146,7 +1153,7 @@ class PlayerState(object):
             else None,
             "emote": self.emote,
             "emote_tick": self.emote_tick,
-            "just_emoted": self.emote_tick >= self.EMOTE_COOLDOWN - 1 # always tick after to be valid so need to -1
+            #"just_emoted": self.emote_tick >= self.EMOTE_COOLDOWN - 1 # always tick after to be valid so need to -1
         }
 
     @staticmethod
@@ -1155,6 +1162,8 @@ class PlayerState(object):
         held_obj = player_dict.get("held_object", None)
         if held_obj is not None:
             player_dict["held_object"] = SoupState.from_dict(held_obj)
+        allowed_keys = {"position", "orientation", "held_object", "emote", "emote_tick"}
+        player_dict = {k: v for k, v in player_dict.items() if k in allowed_keys}
         return PlayerState(**player_dict)
 
 
@@ -1590,6 +1599,15 @@ class OvercookedGridworld(object):
         return OvercookedGridworld.from_grid(
             grid, base_layout_params, params_to_overwrite
         )
+    
+    def convert_dict_to_feature_vector(self, feature_dict):
+        """
+        Converts a feature dict (from featurize_state) into a flattened numpy vector.
+        """
+        return np.concatenate([
+        np.array(v).flatten() for k, v in sorted(feature_dict.items())
+        ])
+
 
     @staticmethod
     def from_grid(
@@ -2411,11 +2429,12 @@ class OvercookedGridworld(object):
         return pot_states["empty"]
     
     def get_empty_cutting_boards(self, state):
-        cutting_board_positions = self.terrain_pos_dict["cutting_board"]
+        print("terrain dict:", self.terrain_pos_dict)
+        cutting_board_positions = self.terrain_pos_dict["C"]
         return [pos for pos in cutting_board_positions if not state.has_object(pos)]
     
     def get_empty_grills(self, state):
-        grill_positions = self.terrain_pos_dict["grill"]
+        grill_positions = self.terrain_pos_dict["G"]
         return [pos for pos in grill_positions if not state.has_object(pos)]
 
     def get_non_empty_pots(self, pot_states):
@@ -3073,6 +3092,7 @@ class OvercookedGridworld(object):
                 + urgency_features
             )
             state_mask_dict = {k: np.zeros(self.shape) for k in LAYERS}
+            
 
             # MAP LAYERS
             if horizon - overcooked_state.timestep < 40:
@@ -3221,7 +3241,7 @@ class OvercookedGridworld(object):
         )
         return (total_features,)
 
-    def featurize_state(self, overcooked_state, mlam, num_pots=2, **kwargs):
+    def featurize_state(self, overcooked_state, mlam, num_pots=2, return_dict=False, **kwargs):
         """
         Encode state with some manually designed features. Works for arbitrary number of players
 
@@ -3266,14 +3286,22 @@ class OvercookedGridworld(object):
         def concat_dicts(a, b):
             return {**a, **b}
 
+        # def convert_dict_to_feature_vector(self, feature_dict):
+        #     return np.concatenate([np.array(v).flatten() for v in feature_dict.values()])
+
         def make_closest_feature(idx, player, name, locations):
             """
             Compute (x, y) deltas to closest feature of type `name`, and save it in the features dict
             """
+            loc, deltas = self.get_deltas_to_closest_location(player, locations, mlam)
+            print("Closest reachable location to", name, "is:", loc)
+            print("All candidate locations:", locations)
+
             feat_dict = {}
             obj = None
             held_obj = player.held_object
             held_obj_name = held_obj.name if held_obj else "none"
+            print("holding: ", held_obj_name)
             if held_obj_name == name:
                 obj = held_obj
                 feat_dict["p{}_closest_{}".format(i, name)] = (0, 0)
@@ -3281,10 +3309,13 @@ class OvercookedGridworld(object):
                 loc, deltas = self.get_deltas_to_closest_location(
                     player, locations, mlam
                 )
+                #print("loc: ", loc)
+                #print("deltas: ", deltas)
+               # print("ok has obj:", overcooked_state.has_object(loc))
                 if loc and overcooked_state.has_object(loc):
                     obj = overcooked_state.get_object(loc)
                 feat_dict["p{}_closest_{}".format(idx, name)] = deltas
-
+                
             if name == "soup":
                 num_onions = num_tomatoes = 0
                 if obj:
@@ -3396,7 +3427,7 @@ class OvercookedGridworld(object):
 
             return feat_dict
 
-        IDX_TO_OBJ = ["onion", "soup", "dish", "tomato"]
+        IDX_TO_OBJ = ["onion", "soup", "dish", "tomato", "beef", "bun", "cheese"]
         OBJ_TO_IDX = {o_name: idx for idx, o_name in enumerate(IDX_TO_OBJ)}
 
         counter_objects = self.get_counter_objects_dict(overcooked_state)
@@ -3408,6 +3439,8 @@ class OvercookedGridworld(object):
             all_features["p{}_orientation".format(i)] = np.eye(4)[
                 orientation_idx
             ]
+            all_features[f"p{i}_just_emoted"] = [int(player.just_emoted)] #added
+
             obj = player.held_object
 
             if obj is None:
@@ -3529,7 +3562,7 @@ class OvercookedGridworld(object):
                 all_features["p{}_wall_{}".format(i, direction)] = (
                     [0] if feat == " " else [1]
                 )
-
+       # pprint.pprint(all_features.items())
         # Convert all list and tuple values to np.arrays
         features_np = {k: np.array(v) for k, v in all_features.items()}
 
@@ -3585,8 +3618,15 @@ class OvercookedGridworld(object):
                 )
             )
             ordered_features.append(player_i_ordered_features)
+        
+        #if return_dict:
+        #("ordered features", ordered_features)
+        return ordered_features  # List of per-agent feature dictionaries
+        # else:
+        #     return [self.convert_dict_to_feature_vector(d) for d in ordered_features]
 
-        return ordered_features
+
+
 
     def get_deltas_to_closest_location(self, player, locations, mlam):
         _, closest_loc = mlam.motion_planner.min_cost_to_feature(
