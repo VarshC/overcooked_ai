@@ -590,6 +590,7 @@ class OvercookedGame(Game):
             "player_1_id": self.players[1],
             "player_0_is_human": self.players[0] in self.human_players,
             "player_1_is_human": self.players[1] in self.human_players,
+            "info": info
         }
 
         self.trajectory.append(transition)

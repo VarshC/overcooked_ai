@@ -842,6 +842,16 @@ class GrillableState(ObjectState):
         # Should be removed once overcooked-demo is updated to use 'cooking_tick' instead of '_cooking_tick'
         info_dict["_cooking_tick"] = self._cooking_tick
         return info_dict
+    
+    @classmethod
+    def from_dict(cls, obj_dict):
+        obj_dict = copy.deepcopy(obj_dict)
+
+        if not 'grillable' in obj_dict:
+            raise ValueError(f'Trying to construct grillable from non-grillable dict')
+        
+        obj_dict['name'] = '_'.join(obj_dict['name'].split('_')[:-1])
+        return cls(**obj_dict)
 
 
 class ChoppableState(ObjectState):
@@ -920,16 +930,29 @@ class ChoppableState(ObjectState):
     def to_dict(self):
         info_dict = super(ChoppableState, self).to_dict()
         info_dict["cooking_tick"] = self._chopping_tick
+        info_dict["chopping_tick"] = self._chopping_tick
         info_dict["is_cooking"] = self.is_cooking
         info_dict["is_ready"] = self.is_ready
         info_dict["is_idle"] = self.is_idle
         info_dict["cook_time"] = -1 if self.is_idle else self._chopping_amount
+        info_dict["chopping_amount"] = self._chopping_amount
         info_dict["choppable"] = True
 
         # This is for backwards compatibility w/ overcooked-demo
         # Should be removed once overcooked-demo is updated to use 'cooking_tick' instead of '_cooking_tick'
         info_dict["_cooking_tick"] = self._chopping_tick
         return info_dict
+    
+    @classmethod
+    def from_dict(cls, obj_dict):
+        obj_dict = copy.deepcopy(obj_dict)
+
+        if not 'choppable' in obj_dict:
+            raise ValueError(f'Trying to construct choppable from non-choppable dict')
+        
+        obj_dict['name'] = '_'.join(obj_dict['name'].split('_')[:-1])
+
+        return cls(**obj_dict)
 
 
 class BurgerState(ObjectState):
@@ -945,12 +968,13 @@ class BurgerState(ObjectState):
             self, 
             position, 
             ingredients = [],
+            name = "burger",
             **kwargs
     ):
         """
         Represents a burger state
         """
-        super(BurgerState, self).__init__("burger", position, **kwargs)
+        super(BurgerState, self).__init__(name, position, **kwargs)
 
         self._ingredients = ingredients
 
@@ -1041,6 +1065,35 @@ class BurgerState(ObjectState):
         info_dict["burger"] = True
 
         return info_dict
+    
+    @classmethod
+    def from_dict(cls, obj_dict):
+        obj_dict = copy.deepcopy(obj_dict)
+
+        if not 'burger' in obj_dict:
+            raise ValueError(f'Trying to construct burger from non-burger dict')
+        
+        ingredients_objs = [
+            get_constructor_class(ing_dict).from_dict(ing_dict)
+            for ing_dict in obj_dict["_ingredients"]
+        ]
+        del obj_dict["_ingredients"]
+        obj_dict["ingredients"] = ingredients_objs
+
+        return cls(**obj_dict)
+
+def get_constructor_class(object_dict):
+
+    class_map = {
+        'burger': BurgerState,
+        'grillable': GrillableState,
+        'choppable': ChoppableState
+    }
+
+    for k, cls in class_map.items():
+        if k in object_dict:
+            return cls
+    return SoupState
 
 
 class PlayerState(object):
@@ -1161,11 +1214,10 @@ class PlayerState(object):
         player_dict = copy.deepcopy(player_dict)
         held_obj = player_dict.get("held_object", None)
         if held_obj is not None:
-            player_dict["held_object"] = SoupState.from_dict(held_obj)
+            player_dict["held_object"] = get_constructor_class(held_obj).from_dict(held_obj)
         allowed_keys = {"position", "orientation", "held_object", "emote", "emote_tick"}
         player_dict = {k: v for k, v in player_dict.items() if k in allowed_keys}
         return PlayerState(**player_dict)
-
 
 class OvercookedState(object):
     """A state in OvercookedGridworld."""
@@ -1431,7 +1483,7 @@ class OvercookedState(object):
         state_dict["players"] = [
             PlayerState.from_dict(p) for p in state_dict["players"]
         ]
-        object_list = [SoupState.from_dict(o) for o in state_dict["objects"]]
+        object_list = [get_constructor_class(o).from_dict(o) for o in state_dict["objects"]]
         state_dict["objects"] = {ob.position: ob for ob in object_list}
         return OvercookedState(**state_dict)
 
@@ -1482,6 +1534,16 @@ event_action_suffix = ['pickup', 'drop']
 event_prefix = ['', 'useful_']
 EVENT_TYPES.extend(
     [f'{prefix}{item}_{suffix}' for item in NEW_OBJECTS | GRILLABLE_OBJECTS_EXPANDED | CHOPPABLE_OBJECTS_EXPANDED for suffix in event_action_suffix for prefix in event_prefix]
+)
+
+grill_event_action_suffix = ['grill_begin', 'grill_flip', 'grill_done']
+EVENT_TYPES.extend(
+    [f'{item}_{suffix}' for item in GRILLABLE_OBJECTS_EXPANDED for suffix in grill_event_action_suffix]
+)
+
+chop_event_action_suffix = ['chop_begin', 'chop_tick', 'chop_done']
+EVENT_TYPES.extend(
+    [f'{item}_{suffix}' for item in CHOPPABLE_OBJECTS_EXPANDED for suffix in chop_event_action_suffix]
 )
 
 POTENTIAL_CONSTANTS = {
@@ -1874,7 +1936,7 @@ class OvercookedGridworld(object):
         self.resolve_emote(new_state, joint_action)
 
         # Finally, environment effects
-        self.step_environment_effects(new_state)
+        self.step_environment_effects(new_state, events_infos)
 
         # Additional dense reward logic
         # shaped_reward += self.calculate_distance_based_shaped_reward(state, new_state)
@@ -1955,7 +2017,15 @@ class OvercookedGridworld(object):
                     if isinstance(target_object, BurgerState):
                         if target_object.is_burger_ingredient(player.get_object()):
                             # Add Ingredient to burger
+                            obj = player.get_object()
                             target_object.add_ingredients(player.remove_object())
+                            self.log_object_drop(
+                                events_infos,
+                                new_state,
+                                obj.name,
+                                pot_states,
+                                player_idx,
+                            )
                         else:
                             # Do nothing
                             pass
@@ -2058,6 +2128,7 @@ class OvercookedGridworld(object):
                         new_state.is_done = True
                         delivery_rew = 10
                         sparse_reward[player_idx] += delivery_rew
+                        self.log_object_drop(events_infos, new_state, obj.name, pot_states, player_idx)
                     else:
                         raise ValueError(f'{obj._ingredients=}')
 
@@ -2070,18 +2141,30 @@ class OvercookedGridworld(object):
                         # Place things in grill
                         obj = player.remove_object()
                         new_state.add_object(obj, i_pos)
+                        self.log_object_drop(
+                            events_infos, new_state, obj.name, pot_states, player_idx
+                        )
                     else:
                         # Do nothing
                         pass
 
             elif terrain_type == "G" and not player.has_object():
                 if self.grillable_to_be_grilled_at_location(new_state, i_pos):
+                    # Begin cooking
                     grillable = new_state.get_object(i_pos)
                     grillable.begin_cooking()
+                    self.log_grill_begin(
+                        events_infos, new_state, grillable.name, pot_states, player_idx
+                    )
                 elif self.grillable_to_be_flipped_at_location(new_state, i_pos):
+                    # Flip
                     grillable = new_state.get_object(i_pos)
                     grillable.flip()
+                    self.log_grill_flip(
+                        events_infos, new_state, grillable.name, pot_states, player_idx
+                    )
                 elif self.grillable_ready_at_location(new_state, i_pos):
+                    # Pickup
                     grillable = new_state.remove_object(i_pos)
                     grillable.done()
                     player.set_object(grillable)
@@ -2100,6 +2183,9 @@ class OvercookedGridworld(object):
                         # Place things in grill
                         obj = player.remove_object()
                         new_state.add_object(obj, i_pos)
+                        self.log_object_drop(
+                            events_infos, new_state, obj.name, pot_states, player_idx
+                        )
                     else:
                         # Do nothing
                         pass
@@ -2107,7 +2193,21 @@ class OvercookedGridworld(object):
                 if self.choppable_to_be_chopped_at_location(new_state, i_pos):
                     # Chop
                     choppable = new_state.get_object(i_pos)
+                    is_idle_before_chop = choppable.is_idle
                     choppable.chop()
+                    if self.choppable_ready_at_location(new_state, i_pos):
+                        self.log_chop_done(
+                            events_infos, new_state, choppable.name, pot_states, player_idx
+                        )
+                    elif is_idle_before_chop:
+                        self.log_chop_begin(
+                            events_infos, new_state, choppable.name, pot_states, player_idx
+                        )
+                    else:
+                        self.log_chop_tick(
+                            events_infos, new_state, choppable.name, pot_states, player_idx
+                        )
+                        
                 elif self.choppable_ready_at_location(new_state, i_pos):
                     choppable = new_state.remove_object(i_pos)
                     player.set_object(choppable)
@@ -2240,7 +2340,7 @@ class OvercookedGridworld(object):
             for pos0, pos1 in itertools.combinations(joint_position, 2)
         )
 
-    def step_environment_effects(self, state: OvercookedState):
+    def step_environment_effects(self, state: OvercookedState, events_infos = None):
         state.timestep += 1
         for obj in state.objects.values():
             if obj.name == "soup":
@@ -2256,6 +2356,9 @@ class OvercookedGridworld(object):
             if isinstance(obj, GrillableState):
                 if obj.is_cooking and not obj.is_ready_for_flip:
                     obj.cook()
+                    if obj.is_ready:
+                        self.log_grill_done(events_infos, state, obj.name)
+
 
     def _handle_collisions(self, old_positions, new_positions):
         """If agents collide, they stay at their old locations"""
@@ -2827,6 +2930,55 @@ class OvercookedGridworld(object):
             if USEFUL_DROP_FNS[obj_name](state, pot_states, player_index):
                 obj_useful_key = "useful_" + obj_name + "_drop"
                 events_infos[obj_useful_key][player_index] = True
+
+    def log_grill_begin(
+        self, events_infos, state, obj_name, pot_states, player_index
+    ):
+        obj_grill_begin_key = obj_name + "_grill_begin"
+        if obj_grill_begin_key not in events_infos:
+            raise ValueError("Unknown event {}".format(obj_grill_begin_key))
+        events_infos[obj_grill_begin_key][player_index] = True
+    
+    def log_grill_flip(
+        self, events_infos, state, obj_name, pot_states, player_index
+    ):
+        obj_grill_flip_key = obj_name + "_grill_flip"
+        if obj_grill_flip_key not in events_infos:
+            raise ValueError("Unknown event {}".format(obj_grill_flip_key))
+        events_infos[obj_grill_flip_key][player_index] = True
+
+    def log_grill_done(
+        self, events_infos, state, obj_name
+    ):
+        obj_grill_done_key = obj_name + "_grill_done"
+        if obj_grill_done_key not in events_infos:
+            raise ValueError("Unknown event {}".format(obj_grill_done_key))
+        for i in range(len(events_infos[obj_grill_done_key])):
+            events_infos[obj_grill_done_key][i] = True
+
+    def log_chop_begin(
+        self, events_infos, state, obj_name, pot_states, player_index
+    ):
+        obj_chop_begin_key = obj_name + "_chop_begin"
+        if obj_chop_begin_key not in events_infos:
+            raise ValueError("Unknown event {}".format(obj_chop_begin_key))
+        events_infos[obj_chop_begin_key][player_index] = True
+
+    def log_chop_tick(
+        self, events_infos, state, obj_name, pot_states, player_index
+    ):
+        obj_chop_tick_key = obj_name + "_chop_tick"
+        if obj_chop_tick_key not in events_infos:
+            raise ValueError("Unknown event {}".format(obj_chop_tick_key))
+        events_infos[obj_chop_tick_key][player_index] = True
+
+    def log_chop_done(
+        self, events_infos, state, obj_name, pot_states, player_index
+    ):
+        obj_chop_done_key = obj_name + "_chop_done"
+        if obj_chop_done_key not in events_infos:
+            raise ValueError("Unknown event {}".format(obj_chop_done_key))
+        events_infos[obj_chop_done_key][player_index] = True
 
     def is_dish_pickup_useful(self, state, pot_states, player_index=None):
         """
